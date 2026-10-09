@@ -1,0 +1,10 @@
+
+# 本地参考资料
+
+参考/
+data/
+*.db
+*.db-wal
+*.db-shm
+web/dashboard/node_modules/
+web/dashboard/dist/
