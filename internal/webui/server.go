@@ -12,6 +12,7 @@ package webui
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	contracts "oh-my-qqbot/internal"
@@ -184,6 +185,10 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) Addrs() []string {
 	out := make([]string, 0, len(s.hosts))
 	for _, host := range s.hosts {
+		// IPv6 字面量需要方括号（net.JoinHostPort 语义），否则 listen 报 too many colons。
+		if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+			host = "[" + host + "]"
+		}
 		out = append(out, host+":"+itoa(s.port))
 	}
 	return out
