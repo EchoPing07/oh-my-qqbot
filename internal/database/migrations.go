@@ -180,6 +180,41 @@ var schemaStatements = []string{
 	`CREATE INDEX IF NOT EXISTS ix_chat_sessions_scope ON chat_sessions(scope)`,
 	`CREATE INDEX IF NOT EXISTS ix_chat_sessions_created_timestamp ON chat_sessions(created_timestamp)`,
 	`CREATE INDEX IF NOT EXISTS ix_chat_sessions_last_active_timestamp ON chat_sessions(last_active_timestamp)`,
+
+	// 对齐 database_model.MaisakaReplyEffect（表名 maisaka_reply_effects，P11 回复效果观察）。
+	// 与 Python 版差异：record_json 存完整 JSON 文本（Python 版再 gzip 一份到 record_blob）；
+	// 新增 created_ms / finalized_ms 两个 epoch 毫秒列，供跨时区稳定排序。
+	`CREATE TABLE IF NOT EXISTS maisaka_reply_effects (
+		effect_id TEXT PRIMARY KEY,
+		session_id TEXT NOT NULL,
+		session_name TEXT NOT NULL DEFAULT '',
+		chat_type TEXT NOT NULL DEFAULT 'group',
+		status TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		created_ms INTEGER,
+		finalized_at TEXT,
+		finalized_ms INTEGER,
+		strategy_primary TEXT NOT NULL DEFAULT 'other',
+		model_name TEXT NOT NULL DEFAULT '',
+		request_fingerprint TEXT NOT NULL DEFAULT '',
+		prompt_fingerprint TEXT NOT NULL DEFAULT '',
+		scorer_version INTEGER NOT NULL DEFAULT 2,
+		response_score REAL,
+		reception_score REAL,
+		conversation_score REAL,
+		raw_score REAL,
+		relative_score REAL,
+		confidence REAL NOT NULL DEFAULT 0,
+		record_json TEXT NOT NULL DEFAULT '{}',
+		record_blob BLOB
+	)`,
+	`CREATE INDEX IF NOT EXISTS ix_reply_effect_session_id ON maisaka_reply_effects(session_id)`,
+	`CREATE INDEX IF NOT EXISTS ix_reply_effect_status ON maisaka_reply_effects(status)`,
+	`CREATE INDEX IF NOT EXISTS ix_reply_effect_created_at ON maisaka_reply_effects(created_at)`,
+	`CREATE INDEX IF NOT EXISTS ix_reply_effect_session_finalized ON maisaka_reply_effects(session_id, finalized_at)`,
+	`CREATE INDEX IF NOT EXISTS ix_reply_effect_strategy_finalized ON maisaka_reply_effects(strategy_primary, finalized_at)`,
+	`CREATE INDEX IF NOT EXISTS ix_reply_effect_model_prompt ON maisaka_reply_effects(model_name, prompt_fingerprint)`,
+	`CREATE INDEX IF NOT EXISTS ix_reply_effect_request_fingerprint ON maisaka_reply_effects(request_fingerprint)`,
 }
 
 // Migrate 执行建表（幂等，对齐 SQLModel.metadata.create_all 的兜底建表语义）。
