@@ -79,6 +79,8 @@ func normalizeValue(val any) any {
 }
 
 // handleGetBotConfig 对齐 GET /config/bot：返回完整 bot 配置（TOML 键名形态）。
+// S2：app_secret 不明文回显 — 非空时返回占位符 __SAVED__，顶层附带
+// has_app_secret 供前端展示「已配置」状态。
 func handleGetBotConfig(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Config == nil {
@@ -87,13 +89,16 @@ func handleGetBotConfig(d *Deps) http.HandlerFunc {
 		}
 		cfg := d.Config.GetGlobalConfig()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"success": true, "config": structToTOMLMap(cfg),
+			"success":        true,
+			"config":         maskSecretsMap(structToTOMLMap(cfg)),
+			"has_app_secret": cfg.Bot.AppSecret != "",
 		})
 	}
 }
 
 // handlePutBotConfig 对齐 POST /config/bot：接收完整 bot 配置（TOML 键名字典），
 // 解析校验后保存（保存即生效，对齐 _reload_model_config_after_save 语义）。
+// S2：app_secret 为占位符/空串时保留磁盘旧值（前端「留空保留」语义）。
 func handlePutBotConfig(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Config == nil {
@@ -115,6 +120,7 @@ func handlePutBotConfig(d *Deps) http.HandlerFunc {
 			fail(w, http.StatusBadRequest, "配置数据验证失败: "+err.Error())
 			return
 		}
+		restoreBotSecrets(cfg, d.Config.GetGlobalConfig())
 		if err := d.Config.SaveBotConfig(cfg); err != nil {
 			fail(w, http.StatusBadRequest, "配置保存失败: "+err.Error())
 			return
@@ -124,6 +130,8 @@ func handlePutBotConfig(d *Deps) http.HandlerFunc {
 }
 
 // handleGetModelConfig 对齐 GET /config/model。
+// S2：各 provider 的 api_key 不明文回显 — 非空时返回占位符 __SAVED__，
+// 顶层附带 has_api_keys（provider 名 → 是否已配置）。
 func handleGetModelConfig(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Config == nil {
@@ -131,13 +139,20 @@ func handleGetModelConfig(d *Deps) http.HandlerFunc {
 			return
 		}
 		cfg := d.Config.GetModelConfig()
+		hasAPIKeys := make(map[string]bool, len(cfg.APIProviders))
+		for _, p := range cfg.APIProviders {
+			hasAPIKeys[p.Name] = p.APIKey != ""
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"success": true, "config": structToTOMLMap(cfg),
+			"success":      true,
+			"config":       maskSecretsMap(structToTOMLMap(cfg)),
+			"has_api_keys": hasAPIKeys,
 		})
 	}
 }
 
 // handlePutModelConfig 对齐 POST /config/model：解析校验 + 保存 + 内存热替换。
+// S2：api_key 为占位符/空串时按服务商名保留磁盘旧值。
 func handlePutModelConfig(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Config == nil {
@@ -159,6 +174,7 @@ func handlePutModelConfig(d *Deps) http.HandlerFunc {
 			fail(w, http.StatusBadRequest, "配置数据验证失败: "+err.Error())
 			return
 		}
+		restoreModelSecrets(cfg, d.Config.GetModelConfig())
 		if err := d.Config.SaveModelConfig(cfg); err != nil {
 			fail(w, http.StatusBadRequest, "配置数据验证失败: "+err.Error())
 			return

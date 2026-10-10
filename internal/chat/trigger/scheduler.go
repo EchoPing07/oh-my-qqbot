@@ -3,6 +3,7 @@ package trigger
 import (
 	"fmt"
 	"strconv"
+	"sync"
 
 	"oh-my-qqbot/internal/chat/context"
 	"oh-my-qqbot/internal/message"
@@ -81,7 +82,13 @@ type FocusGate func(sessionID string, isGroupChat bool) bool
 
 // MessageTurnScheduler mirrors scheduler.MessageTurnScheduler: it decides when
 // external messages enter the Maisaka internal loop.
+//
+// T1 修复：ScheduleMessageTurn（渠道读循环 goroutine 触发）与 RecordReply
+// （引擎 goroutine 经 tools/reply → RecordPlannerReply 触发）并发进入，
+// Python 靠 asyncio 单线程天然串行，Go 必须显式加锁串行化
+// 「门控评估 → 投递/延迟」的完整决策序列。
 type MessageTurnScheduler struct {
+	mu                     sync.Mutex
 	runtime                SchedulerRuntime
 	dynamicReplyGate       *DynamicReplyTurnGate
 	frequencyThresholdGate *FrequencyThresholdTurnGate
@@ -123,6 +130,8 @@ func NewMessageTurnScheduler(runtime SchedulerRuntime, options SchedulerOptions)
 // RecordReply mirrors MessageTurnScheduler.record_reply: called by the runtime
 // after a successful reply so the dynamic gate can count actual replies.
 func (s *MessageTurnScheduler) RecordReply() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.dynamicReplyGate.RecordReply()
 }
 
@@ -131,6 +140,9 @@ func (s *MessageTurnScheduler) DynamicGate() *DynamicReplyGate { return s.dynami
 
 // ScheduleMessageTurn mirrors MessageTurnScheduler.schedule_message_turn.
 func (s *MessageTurnScheduler) ScheduleMessageTurn() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	runtime := s.runtime
 	if s.focusGate != nil && !s.focusGate(runtime.SessionID(), runtime.IsGroupSession()) {
 		s.logf("%s 当前不在 focus 状态，跳过 Maisaka 决策调度", runtime.LogPrefix())

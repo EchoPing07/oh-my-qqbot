@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, EyeOff, RotateCcw, Save } from 'lucide-react'
 
-import { getBotConfig, getBotSchema, saveBotSection, type ConfigData } from '@/api/config'
+import { SECRET_PLACEHOLDER, getBotConfig, getBotSchema, saveBotSection, type ConfigData } from '@/api/config'
 import { reloadConfig } from '@/api/misc'
 import { Banner, Loading, TextInput, Toggle } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -19,6 +19,12 @@ import { toast } from '@/lib/toast'
 
 /** 编辑器最大递归深度：更深的嵌套以只读 JSON 展示。 */
 const MAX_DEPTH = 3
+
+/**
+ * 通用键值编辑器隐藏的密钥字段（S2：GET 已脱敏为占位符，编辑器不再展示，
+ * 密钥统一由凭据卡/模型页编辑；隐藏后保存时原键原值透传，后端保留旧值）。
+ */
+const SECRET_EDITOR_HIDDEN = new Set(['app_secret', 'api_key'])
 
 /**
  * 节的中文名（后端 schema title 优先）。
@@ -227,6 +233,9 @@ export function BotConfigPage() {
  *
  * 这两个字段是 QQ 开放平台的机器人凭据（装配层优先读 bot_config，缺失才回退
  * 环境变量），因此从通用键值编辑器里提出来做成独立卡片：带脱敏、独立校验与保存。
+ * S2：后端 GET 不回传明文密钥（已配置时为 SECRET_PLACEHOLDER 占位）——密钥输入框
+ * 保持「留空保留」语义（参考 Setup.tsx saveModelRoute）：留空 = 保留已配置的
+ * 旧密钥，仅当输入新值时才提交 app_secret 字段。
  * 写入仍走 saveBotSection('bot', …)：读整份 → 覆盖该节 → 整份提交。
  */
 function BotCredentialCard({
@@ -237,18 +246,22 @@ function BotCredentialCard({
   onSaved: () => void
 }) {
   const [appID, setAppID] = useState(String(section.app_id ?? ''))
-  const [appSecret, setAppSecret] = useState(String(section.app_secret ?? ''))
+  const [appSecret, setAppSecret] = useState('')
   const [reveal, setReveal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  // 外部数据刷新（首屏加载 / 保存后失效重取）时同步输入框：渲染期对齐，无 effect 级联
+  // GET 已脱敏：app_secret 为占位符即「已配置过密钥」。
+  const hasSecret = String(section.app_secret ?? '') === SECRET_PLACEHOLDER
+
+  // 外部数据刷新（首屏加载 / 保存后失效重取）时同步输入框：渲染期对齐，无 effect 级联。
+  // 密钥输入框永远从空开始（不回显占位符）。
   const [lastExternal, setLastExternal] = useState('')
-  const externalKey = `${String(section.app_id ?? '')}\u0000${String(section.app_secret ?? '')}`
+  const externalKey = `${String(section.app_id ?? '')}\u0000${hasSecret}`
   if (externalKey !== lastExternal) {
     setLastExternal(externalKey)
     setAppID(String(section.app_id ?? ''))
-    setAppSecret(String(section.app_secret ?? ''))
+    setAppSecret('')
   }
 
   const configured = String(section.app_id ?? '').trim() !== ''
@@ -256,14 +269,22 @@ function BotCredentialCard({
   const save = async () => {
     const id = appID.trim()
     const secret = appSecret.trim()
-    if (!id || !secret) {
-      setError('应用 ID 与应用密钥都需要填写')
+    if (!id) {
+      setError('应用 ID 需要填写')
+      return
+    }
+    if (!secret && !hasSecret) {
+      setError('应用密钥需要填写（已配置过时留空即保留旧密钥）')
       return
     }
     setError('')
     setSaving(true)
     try {
-      await saveBotSection('bot', { ...section, app_id: id, app_secret: secret })
+      // 留空 = 保留旧密钥：不下发 app_secret 键（后端对空串/占位符均保留旧值）。
+      const payload: ConfigData = { ...section, app_id: id }
+      if (secret) payload.app_secret = secret
+      else delete payload.app_secret
+      await saveBotSection('bot', payload)
       toast.ok('机器人凭据已保存，请热重载或重启后生效')
       onSaved()
     } catch (err) {
@@ -278,9 +299,14 @@ function BotCredentialCard({
       <div className="card-head">
         <h3>机器人凭据</h3>
         {configured ? (
-          <span className="badge badge-ok">已配置</span>
+          <span className="badge badge-ok">ID 已配置</span>
         ) : (
-          <span className="badge badge-warn">未配置</span>
+          <span className="badge badge-warn">ID 未配置</span>
+        )}
+        {hasSecret ? (
+          <span className="badge badge-ok">密钥已配置</span>
+        ) : (
+          <span className="badge badge-warn">密钥未配置</span>
         )}
         <span className="spacer" />
         <button className="btn btn-ghost btn-sm" onClick={() => setReveal(!reveal)} title={reveal ? '隐藏密钥' : '显示密钥'}>
@@ -309,18 +335,18 @@ function BotCredentialCard({
         </div>
         <div>
           <label className="label" htmlFor="bot-app-secret">
-            应用密钥（AppSecret）
+            应用密钥（AppSecret）{hasSecret ? ' — 已配置，留空保留' : ''}
           </label>
           <TextInput
             id="bot-app-secret"
             type={reveal ? 'text' : 'password'}
             value={appSecret}
             onChange={(e) => setAppSecret(e.target.value)}
-            placeholder="用于换取接口调用凭证，请勿外传"
+            placeholder={hasSecret ? '留空保留已配置的密钥' : '用于换取接口调用凭证，请勿外传'}
             autoComplete="new-password"
           />
           <p className="field-hint">
-            对应 bot_config.toml 的 <code>[bot] app_secret</code>
+            对应 bot_config.toml 的 <code>[bot] app_secret</code>；密钥保存后不再回显。
           </p>
         </div>
         <p className="muted-xs">
@@ -440,15 +466,17 @@ function ValueEditor({ value, onChange, field, depth }: EditorProps) {
           </legend>
         ) : null}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {entries.map(([key, val]) => (
-            <ValueEditor
-              key={key}
-              field={key}
-              value={val}
-              depth={depth + 1}
-              onChange={(next) => onChange({ ...(value as ConfigData), [key]: next })}
-            />
-          ))}
+          {entries
+            .filter(([key]) => !SECRET_EDITOR_HIDDEN.has(key))
+            .map(([key, val]) => (
+              <ValueEditor
+                key={key}
+                field={key}
+                value={val}
+                depth={depth + 1}
+                onChange={(next) => onChange({ ...(value as ConfigData), [key]: next })}
+              />
+            ))}
         </div>
       </fieldset>
     )

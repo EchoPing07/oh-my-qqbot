@@ -3,6 +3,7 @@ package trigger
 import (
 	"math"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -63,7 +64,11 @@ type IdleBackoffRuntime interface {
 }
 
 // IdleBackoffController mirrors idle_backoff.IdleBackoffController.
+//
+// T1 修复：count/until 由引擎 goroutine（RecordCycleResult）与渠道读循环
+// goroutine（ShouldDelay）并发读写，Python 靠 asyncio 串行，Go 显式加锁。
 type IdleBackoffController struct {
+	mu      sync.Mutex
 	runtime IdleBackoffRuntime
 	config  ReplyTimingBackoffConfig
 	now     func() float64
@@ -89,6 +94,12 @@ func NewIdleBackoffController(
 // BackoffSeconds mirrors `_get_backoff_seconds`:
 // `min(cap, base * 2^(count - start))`, 0 before `start_count`.
 func (c *IdleBackoffController) BackoffSeconds() float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.backoffSecondsLocked()
+}
+
+func (c *IdleBackoffController) backoffSecondsLocked() float64 {
 	baseSeconds := maxFloat(0.0, c.config.BaseSeconds)
 	capSeconds := maxFloat(0.0, c.config.CapSeconds)
 	if baseSeconds <= 0 || capSeconds <= 0 {
@@ -106,13 +117,27 @@ func (c *IdleBackoffController) BackoffSeconds() float64 {
 }
 
 // Count returns the consecutive idle count (diagnostics/tests).
-func (c *IdleBackoffController) Count() int { return c.count }
+func (c *IdleBackoffController) Count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.count
+}
 
 // Until returns the current backoff deadline (0 when inactive).
-func (c *IdleBackoffController) Until() float64 { return c.until }
+func (c *IdleBackoffController) Until() float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.until
+}
 
 // Reset mirrors IdleBackoffController.reset.
 func (c *IdleBackoffController) Reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.resetLocked()
+}
+
+func (c *IdleBackoffController) resetLocked() {
 	c.count = 0
 	c.until = 0.0
 }
@@ -129,15 +154,19 @@ func (c *IdleBackoffController) RecordCycleResult(cycleEndReason string) {
 		return
 	}
 
+	c.mu.Lock()
 	c.count++
-	backoffSeconds := c.BackoffSeconds()
+	backoffSeconds := c.backoffSecondsLocked()
 	if backoffSeconds <= 0 {
 		c.until = 0.0
+		c.mu.Unlock()
 		return
 	}
 	c.until = c.now() + backoffSeconds
+	count := c.count
+	c.mu.Unlock()
 	c.logf("%s 连续空闲退避已更新: 来源=planner 连续次数=%d 退避=%.2f 秒",
-		c.runtime.LogPrefix(), c.count, backoffSeconds)
+		c.runtime.LogPrefix(), count, backoffSeconds)
 }
 
 // ShouldDelay mirrors IdleBackoffController.should_delay.
@@ -149,15 +178,19 @@ func (c *IdleBackoffController) ShouldDelay(pendingCount int) bool {
 	if !c.runtime.IsGroupSession() {
 		return false
 	}
+
+	c.mu.Lock()
 	if c.until <= 0 {
+		c.mu.Unlock()
 		return false
 	}
-
 	remainingSeconds := c.until - c.now()
 	if remainingSeconds <= 0 {
 		c.until = 0.0
+		c.mu.Unlock()
 		return false
 	}
+	c.mu.Unlock()
 
 	bypassPendingCount := maxInt(0, c.config.BypassPendingCount)
 	if bypassPendingCount > 0 && pendingCount >= bypassPendingCount {
@@ -167,6 +200,8 @@ func (c *IdleBackoffController) ShouldDelay(pendingCount int) bool {
 	}
 
 	c.logf("%s 空闲退避中，延迟 %.2f 秒后再检查", c.runtime.LogPrefix(), remainingSeconds)
+	// 对齐 Python should_delay 末尾的 `_defer_message_turn_check(remaining)`：
+	// 睡够后重跑调度（P1-3 定时器在 runtime 侧实现）。
 	c.runtime.DeferMessageTurnCheck(remainingSeconds)
 	return true
 }

@@ -79,6 +79,46 @@ func handleUserEmojiList(d *Deps) http.HandlerFunc {
 	}
 }
 
+// userEmojiExtensions 是用户表情文件扩展名白名单（列表与内容回源共用）。
+var userEmojiExtensions = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
+
+// handleUserEmojiContent 对齐 GET /user-emojis/{emoji_id}/content — S8 修复：
+// 列表项的 content_url 此前指向未注册路由。实现：requireAuth + ID 白名单
+// （sanitizeUserID 阻断路径穿越）+ 扩展名白名单枚举回源 + 目录边界复核。
+func handleUserEmojiContent(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := sanitizeUserID(r.URL.Query().Get("user_id"))
+		emojiID := sanitizeUserID(pathValue(r, "emoji_id"))
+		if userID == "" || emojiID == "" {
+			fail(w, http.StatusBadRequest, "user_id 与 emoji_id 不能为空")
+			return
+		}
+		root := userEmojiRoot(d)
+		dir := filepath.Join(root, userID)
+		for _, ext := range userEmojiExtensions {
+			path := filepath.Join(dir, emojiID+ext)
+			info, err := os.Stat(path)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			// 双保险：最终路径必须仍在用户表情根目录内。
+			if rel, relErr := filepath.Rel(root, path); relErr != nil ||
+				rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				continue
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				continue
+			}
+			defer f.Close()
+			w.Header().Set("Content-Type", guessImageContentType(path))
+			http.ServeContent(w, r, path, info.ModTime(), f)
+			return
+		}
+		fail(w, http.StatusNotFound, "表情不存在: "+emojiID)
+	}
+}
+
 // handleUserEmojiDelete 对齐 DELETE /user-emojis/{emoji_id}。
 func handleUserEmojiDelete(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +130,7 @@ func handleUserEmojiDelete(d *Deps) http.HandlerFunc {
 		}
 		dir := filepath.Join(userEmojiRoot(d), userID)
 		removed := false
-		for _, ext := range []string{".png", ".gif", ".jpg", ".jpeg", ".webp"} {
+		for _, ext := range userEmojiExtensions {
 			if err := os.Remove(filepath.Join(dir, emojiID+ext)); err == nil {
 				removed = true
 				break

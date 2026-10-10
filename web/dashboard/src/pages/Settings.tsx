@@ -2,7 +2,7 @@
  * 设置 页 — 安全 / 外观 两个分组（关于已独立成 /about 页）。
  *
  * 安全（对齐 internal/webui/routers/auth.go 与 system.go）：
- * - POST /auth/update            修改密码（至少 6 位、不含空格；即时生效，无需重登）
+ * - POST /auth/update            修改密码（至少 6 位、不含空格；即时生效并续用新 token，无需重登）
  * - POST /auth/regenerate        重新生成随机凭据（所有已登录会话立即失效，必须重新登录）
  * - GET  /setup/status           首次配置状态（带 Bearer，is_first_setup / token_source）
  * - POST /setup/reset | /setup/complete   重置 / 完成首次配置向导
@@ -30,7 +30,7 @@ import {
   watchSystemTheme,
   type ThemeMode,
 } from '@/lib/theme'
-import { logoutLocal } from '@/lib/token'
+import { logoutLocal, setStoredToken } from '@/lib/token'
 import { toast } from '@/lib/toast'
 import { Banner, ConfirmModal, Field, Loading, Modal, TextInput } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -126,8 +126,10 @@ function PasswordCard() {
     setSaving(true)
     try {
       await updatePassword(pwd)
-      // 后端 UpdateToken 即时生效：本地 Bearer 已是新值，无需重新登录
-      toast.ok('密码已更新，请牢记')
+      // S4：后端 UpdateToken 即刻生效且旧 token 失效 —— 本地 Bearer 必须同步
+      // 换成新密码，否则下一个请求就 401 被踢回登录页。
+      setStoredToken(pwd)
+      toast.ok('密码已更新，本会话已自动改用新密码，请牢记')
       setPwd('')
       setConfirm('')
       setErrors({})
@@ -189,7 +191,7 @@ function PasswordCard() {
               {saving ? <span className="spin" /> : <KeyRound />} 修改密码
             </button>
           </div>
-          <p className="muted-xs">修改即时生效：当前浏览器会话将继续使用新密码，无需重新登录。</p>
+          <p className="muted-xs">修改即时生效：本浏览器会话已自动改用新密码，无需重新登录。</p>
           <p className="muted-xs">忘记密码时，删除 <code>data/webui.json</code> 后重启主程序即可恢复默认密码 <code>admin123</code>。</p>
         </form>
       </div>

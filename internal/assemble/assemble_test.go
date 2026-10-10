@@ -55,15 +55,15 @@ func newPipelineApp(t *testing.T) *App {
 		DB:          db,
 		Bus:         monitor.NewBus(),
 		ChatManager: chatManager,
-		Heartflow: newHeartflowManager(t, chatManager, func(sessionID string) (*runtime.Runtime, error) {
-			return runtime.NewRuntime(runtime.Options{SessionID: sessionID, IsGroupSession: true}), nil
+		Heartflow: newHeartflowManager(t, chatManager, func(sessionID string, isGroupSession bool) (*runtime.Runtime, error) {
+			return runtime.NewRuntime(runtime.Options{SessionID: sessionID, IsGroupSession: isGroupSession}), nil
 		}),
 	}
 	return app
 }
 
 // newHeartflowManager mirrors SetupPhase2 的 Heartflow 装配（NewRuntime 可注入）。
-func newHeartflowManager(t *testing.T, chatManager *manager.ChatManager, newRuntime func(sessionID string) (*runtime.Runtime, error)) *heartflow.HeartflowManager {
+func newHeartflowManager(t *testing.T, chatManager *manager.ChatManager, newRuntime func(sessionID string, isGroupSession bool) (*runtime.Runtime, error)) *heartflow.HeartflowManager {
 	t.Helper()
 	return heartflow.NewHeartflowManager(heartflow.Options{
 		ChatManager: chatManager,
@@ -664,5 +664,174 @@ func TestChatLoopStepUsesPlannerTask(t *testing.T) {
 	}
 	if body := recordedBodies()[0]; body["model"] != "planner-model" {
 		t.Fatalf("planner 任务应解析到 planner-model: %#v", body["model"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P0-2 回归：群/私判定必须来自 BotChatSession.IsGroupSession
+// ---------------------------------------------------------------------------
+
+// TestNewRuntimeResolvesSessionKindFromChatStream 验证：私聊会话的 runtime
+// IsGroupSession=false 且基础频率走 private_talk_value；群聊走 talk_value。
+// 此前 isGroup 由 session_id 字符串后缀猜测（md5 hex 永不含 _private），
+// 所有会话恒判为群聊。
+func TestNewRuntimeResolvesSessionKindFromChatStream(t *testing.T) {
+	app := newPipelineApp(t)
+	// 把群/私频率配置改成不同值，验证取值来源。
+	global := app.Cfg.GetGlobalConfig()
+	global.Chat.ReplyTiming.TalkValue = 0.9
+	global.Chat.ReplyTiming.PrivateTalkValue = 0.3
+
+	// 用真实 a.newRuntime 重建 Heartflow（newPipelineApp 注入的是轻量工厂）。
+	app.Heartflow = heartflow.NewHeartflowManager(heartflow.Options{
+		ChatManager: app.ChatManager,
+		NewRuntime:  app.newRuntime,
+		Log:         func(string, ...any) {},
+	})
+
+	privateMsg := makeQQGroupMessage("u-private", "")
+	privateMsg.MessageInfo.GroupInfo = nil // 私聊
+	if err := app.handleMessage(context.Background(), privateMsg); err != nil {
+		t.Fatalf("handleMessage(private): %v", err)
+	}
+	privateRuntime, err := app.Heartflow.GetOrCreateHeartflowChat(privateMsg.SessionID)
+	if err != nil {
+		t.Fatalf("私聊心流创建失败: %v", err)
+	}
+	privateOptions := privateRuntime.Options()
+	if privateOptions.IsGroupSession {
+		t.Fatalf("私聊会话被误判为群聊（P0-2 回归）: %+v", privateOptions)
+	}
+	if privateOptions.BaseReplyFrequency != 0.3 {
+		t.Fatalf("私聊基础频率应取 private_talk_value=0.3: %v", privateOptions.BaseReplyFrequency)
+	}
+	// ToolCtx 必须取到真实群/私值（此前硬编码 true）。
+	if ctx := app.ToolCtx(privateMsg.SessionID); ctx.IsGroupSession {
+		t.Fatalf("私聊 ToolCtx.IsGroupSession 应为 false: %v", ctx.IsGroupSession)
+	}
+
+	groupMsg := makeQQGroupMessage("u-group", "g-kind")
+	if err := app.handleMessage(context.Background(), groupMsg); err != nil {
+		t.Fatalf("handleMessage(group): %v", err)
+	}
+	groupRuntime, err := app.Heartflow.GetOrCreateHeartflowChat(groupMsg.SessionID)
+	if err != nil {
+		t.Fatalf("群聊心流创建失败: %v", err)
+	}
+	groupOptions := groupRuntime.Options()
+	if !groupOptions.IsGroupSession {
+		t.Fatalf("群聊会话应判为群聊: %+v", groupOptions)
+	}
+	if groupOptions.BaseReplyFrequency != 0.9 {
+		t.Fatalf("群聊基础频率应取 talk_value=0.9: %v", groupOptions.BaseReplyFrequency)
+	}
+}
+
+// TestPrivateChatSkipsDynamicGate 验证私聊动态门控被跳过（对齐 gates.py
+// 私聊不设门控分支）：群聊里低概率消息会被动态门控拦下，私聊必须直接放行。
+func TestPrivateChatSkipsDynamicGate(t *testing.T) {
+	app := newPipelineApp(t)
+	global := app.Cfg.GetGlobalConfig()
+	global.Chat.ReplyTiming.ReplyTriggerMode = "dynamic"
+	global.Chat.ReplyTiming.PrivateTalkValue = 0.5
+
+	app.Heartflow = heartflow.NewHeartflowManager(heartflow.Options{
+		ChatManager: app.ChatManager,
+		NewRuntime:  app.newRuntime,
+		Log:         func(string, ...any) {},
+	})
+
+	privateMsg := makeQQGroupMessage("u-gate", "")
+	privateMsg.MessageInfo.GroupInfo = nil
+	if err := app.handleMessage(context.Background(), privateMsg); err != nil {
+		t.Fatalf("handleMessage: %v", err)
+	}
+	privateRuntime, err := app.Heartflow.GetOrCreateHeartflowChat(privateMsg.SessionID)
+	if err != nil {
+		t.Fatalf("私聊心流创建失败: %v", err)
+	}
+	privateRuntime.Start(make(chan struct{}))
+	defer privateRuntime.Stop()
+
+	// 占位符消息（[表情包]）概率低于静态阈值，群聊动态门控会拦下；私聊直接放行。
+	placeholder := privateMsg
+	placeholder.ProcessedPlainText = message.StringPtr("[表情包]")
+	privateRuntime.RegisterMessage(placeholder)
+	if !privateRuntime.MessageTurnScheduled() {
+		t.Fatal("私聊不设动态门控，低概率消息也应直接进入 Planner")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P1-5 回归：Planner 请求必须携带 system 提示词
+// ---------------------------------------------------------------------------
+
+// TestChatLoopStepPrependsSystemMessage 验证 planner 请求首条消息为 system
+// （模板/配置缺失时使用内置兜底提示词，不允许再发裸历史）。
+func TestChatLoopStepPrependsSystemMessage(t *testing.T) {
+	app, recordedBodies := newLLMBackedApp(t, func(int, map[string]any) (int, any) {
+		return http.StatusOK, plannerChatLoopPayload("", "call-1", "wait", "{}")
+	})
+	bridge := app.Planner().ForSession("s1")
+	if _, err := bridge.ChatLoopStep(context.Background(), runtime.PlannerRequest{SessionID: "s1"}); err != nil {
+		t.Fatalf("ChatLoopStep: %v", err)
+	}
+	messages, ok := recordedBodies()[0]["messages"].([]any)
+	if !ok || len(messages) == 0 {
+		t.Fatalf("messages = %#v", recordedBodies()[0]["messages"])
+	}
+	system := messages[0].(map[string]any)
+	if system["role"] != "system" {
+		t.Fatalf("首条消息应为 system: %#v", system)
+	}
+	content, _ := system["content"].(string)
+	if strings.TrimSpace(content) == "" {
+		t.Fatal("system 提示词不应为空")
+	}
+	// system 只允许出现在首条（历史/注入消息不得插入新的 system）。
+	for index, raw := range messages[1:] {
+		entry := raw.(map[string]any)
+		if entry["role"] == "system" {
+			t.Fatalf("第 %d 条又出现 system 消息: %#v", index+1, entry)
+		}
+	}
+}
+
+// TestPlannerSystemPromptRendersMaisakaTemplate 验证模板路径：仓库自带
+// prompts/zh-CN/maisaka_chat.prompt 应被人设与场景注意事项填充。
+func TestPlannerSystemPromptRendersMaisakaTemplate(t *testing.T) {
+	app := newPipelineApp(t)
+	// 指向仓库 prompts 目录（测试运行于 internal/assemble，仓库根在 ../..）。
+	// 必须在 promptManager 首次加载前设置（sync.Once 缓存）。
+	app.opts.RootDir = "../.."
+	global := app.Cfg.GetGlobalConfig()
+	global.Personality.BehaviorStyle = "测试行为风格ABCD"
+	global.Chat.ReplyStyle.GroupChatPrompt = "群聊注意事项XYZ"
+	global.Chat.ReplyStyle.PrivateChatPrompt = "私聊注意事项XYZ"
+
+	bridge := app.Planner().ForSession("s1")
+	groupPrompt := bridge.plannerSystemPrompt(true)
+	if !strings.Contains(groupPrompt, "麦麦") {
+		t.Fatalf("群聊 system 提示词应含 bot 昵称: %q", groupPrompt)
+	}
+	if !strings.Contains(groupPrompt, "测试行为风格ABCD") {
+		t.Fatalf("群聊 system 提示词应渲染 behavior_style: %q", groupPrompt)
+	}
+	if !strings.Contains(groupPrompt, "群聊注意事项XYZ") {
+		t.Fatalf("群聊 system 提示词应渲染群聊注意事项: %q", groupPrompt)
+	}
+	if strings.Contains(groupPrompt, "私聊注意事项XYZ") {
+		t.Fatalf("群聊 system 提示词不应混入私聊注意事项: %q", groupPrompt)
+	}
+	if !strings.Contains(groupPrompt, "query_memory()") {
+		t.Fatalf("system 提示词应含 query_memory 使用规则: %q", groupPrompt)
+	}
+
+	privatePrompt := bridge.plannerSystemPrompt(false)
+	if !strings.Contains(privatePrompt, "私聊注意事项XYZ") {
+		t.Fatalf("私聊 system 提示词应渲染私聊注意事项: %q", privatePrompt)
+	}
+	if strings.Contains(privatePrompt, "群聊注意事项XYZ") {
+		t.Fatalf("私聊 system 提示词不应混入群聊注意事项: %q", privatePrompt)
 	}
 }

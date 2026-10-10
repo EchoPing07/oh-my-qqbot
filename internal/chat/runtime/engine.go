@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	chatcontext "oh-my-qqbot/internal/chat/context"
 	"oh-my-qqbot/internal/chat/trigger"
@@ -69,6 +70,14 @@ type Engine struct {
 
 	stopCh  chan struct{}
 	running bool
+
+	// 引擎作用域执行上下文（T5 修复）：RunLoop 启动时创建，stop 关闭或循环
+	// 退出时取消，工具执行（reply 段间 sleep、渠道发送）与 planner 请求都从它
+	// 派生 ctx，保证停止语义能传导到阻塞段。ctxMu 保护（RunLoop 在引擎
+	// goroutine 写入，测试可能直接调 handlePlannerResponseActions）。
+	ctxMu      sync.Mutex
+	execCtx    context.Context
+	execCancel context.CancelFunc
 }
 
 // NewEngine mirrors MaisakaReasoningEngine.__init__.
@@ -96,6 +105,29 @@ func (e *Engine) ensureRunning() {
 func (e *Engine) RunLoop(stop <-chan struct{}) error {
 	e.running = true
 	defer func() { e.running = false }()
+
+	// T5 修复：建立引擎作用域 ctx——stop 关闭（运行时停止/引擎循环退出）时
+	// 取消，本轮 planner 请求与工具执行全部派生自它，打断/停止语义因此能
+	// 传导到 reply 段间 sleep 与渠道发送。
+	execCtx, cancelExec := context.WithCancel(context.Background())
+	e.ctxMu.Lock()
+	e.execCtx = execCtx
+	e.execCancel = cancelExec
+	e.ctxMu.Unlock()
+	defer func() {
+		cancelExec()
+		e.ctxMu.Lock()
+		e.execCtx = nil
+		e.execCancel = nil
+		e.ctxMu.Unlock()
+	}()
+	go func() {
+		select {
+		case <-stop:
+			cancelExec()
+		case <-execCtx.Done():
+		}
+	}()
 
 	for {
 		queuedTrigger, ok := e.runtime.NextTurnTrigger(stop)
@@ -131,6 +163,29 @@ func (e *Engine) RunLoop(stop <-chan struct{}) error {
 			}
 			return err
 		}
+	}
+}
+
+// executionContext returns the engine-scoped execution ctx（RunLoop 未运行时
+// 返回 Background，保持测试直接驱动引擎路径可用）。
+func (e *Engine) executionContext() context.Context {
+	e.ctxMu.Lock()
+	defer e.ctxMu.Unlock()
+	if e.execCtx == nil {
+		return context.Background()
+	}
+	return e.execCtx
+}
+
+// cancelExecution 取消引擎作用域执行上下文（Runtime.Stop 时调用：打断进行中
+// 的 planner 请求与工具执行，保证停止语义传导到 reply 段间 sleep 与渠道发送；
+// 幂等，RunLoop 未运行时为空操作）。
+func (e *Engine) cancelExecution() {
+	e.ctxMu.Lock()
+	cancel := e.execCancel
+	e.ctxMu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 }
 
@@ -289,6 +344,12 @@ func (e *Engine) runCycle(turnStart TurnStartContext) error {
 	roundIndex := 0
 	maxRounds := e.runtime.options.maxInternalRounds()
 
+	// T5 修复：轮作用域可取消 ctx——本轮 planner 请求与工具执行全部派生自它。
+	// 正常轮结束时 ExecuteToolCalls 已同步返回，defer 的取消不影响已完成的
+	// 发送；只有引擎停止/循环退出（父 ctx 取消）才会打断进行中的工具执行。
+	cycleCtx, cancelCycle := context.WithCancel(e.executionContext())
+	defer cancelCycle()
+
 	for roundIndex < maxRounds {
 		pendingRoundMessages, err := e.collectPendingMessagesBeforeNextRound(roundIndex)
 		if err != nil {
@@ -310,11 +371,11 @@ func (e *Engine) runCycle(turnStart TurnStartContext) error {
 		}
 
 		e.runtime.StartPlannerContinuation()
-		response, requestErr := e.runPlannerRequest(planner, triggerMessage, cachedMessages, roundText, &state.currentStageStartedAt)
+		response, requestErr := e.runPlannerRequest(cycleCtx, planner, triggerMessage, cachedMessages, roundText, &state.currentStageStartedAt)
 		if requestErr == nil {
 			state.response = response
 			var actionErr error
-			state.breakAfterAction, actionErr = e.handlePlannerResponseActions(planner, response, cycleID, state)
+			state.breakAfterAction, actionErr = e.handlePlannerResponseActions(cycleCtx, planner, response, cycleID, state)
 			if actionErr == nil {
 				// `continue` inside the try: the finally still finalizes the round
 				// and the loop advances to the next round index.
@@ -375,6 +436,7 @@ type plannerInterruptResult struct {
 }
 
 func (e *Engine) runPlannerRequest(
+	cycleCtx context.Context,
 	planner PlannerLLM,
 	triggerMessage *message.SessionMessage,
 	sourceMessages []*message.SessionMessage,
@@ -384,7 +446,9 @@ func (e *Engine) runPlannerRequest(
 	_ = triggerMessage
 	_ = sourceMessages
 	e.runtime.Logf("%s 开始思考: %s", e.runtime.LogPrefix(), roundText)
-	ctx, cancel := context.WithCancel(context.Background())
+	// 请求 ctx 挂在轮作用域 ctx 之下：打断只取消本次请求（对齐 Python
+	// ReqAbortException 语义），而引擎停止会经父 ctx 一并取消。
+	ctx, cancel := context.WithCancel(cycleCtx)
 	defer cancel()
 	interruptFlag := NewInterruptFlag()
 	e.runtime.BindPlannerInterrupt(interruptFlag, cancel)
@@ -424,7 +488,11 @@ func (e *Engine) runPlannerRequest(
 
 // handlePlannerResponseActions mirrors `_handle_planner_response_actions`.
 // It returns whether the loop must end after this action.
+//
+// ctx 为轮作用域执行上下文（T5 修复）：此前工具执行用 context.Background()
+// 完全不可取消，运行时停止时 reply 段间 sleep 与渠道发送无法被打断。
 func (e *Engine) handlePlannerResponseActions(
+	ctx context.Context,
 	planner PlannerLLM,
 	response *PlannerResponse,
 	cycleDetail int,
@@ -452,7 +520,7 @@ func (e *Engine) handlePlannerResponseActions(
 			response.ToolCalls[index].Reasoning = response.Reasoning
 		}
 	}
-	results, err := planner.ExecuteToolCalls(context.Background(), response.ToolCalls, plannerContent)
+	results, err := planner.ExecuteToolCalls(ctx, response.ToolCalls, plannerContent)
 	if err != nil {
 		if IsInterruptedError(err) {
 			return false, err

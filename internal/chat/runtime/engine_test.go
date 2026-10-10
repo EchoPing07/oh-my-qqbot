@@ -15,9 +15,11 @@ import (
 )
 
 // waitFor polls cond until it returns true or the deadline expires.
+// 截止时间给足余量：全量套件并行跑时（本机还有其他构建负载），goroutine
+// 调度延迟可能远超 3s，过短的等待会间歇误报。
 func waitFor(t *testing.T, label string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
@@ -464,7 +466,7 @@ func TestReasoningEngineResponseActions(t *testing.T) {
 	// returns shouldBreak=false.
 	response := functionCallResponse("query_memory", "call-1")
 	state := &cycleRuntimeState{response: response}
-	shouldBreak, err := engine.handlePlannerResponseActions(planner, response, 1, state)
+	shouldBreak, err := engine.handlePlannerResponseActions(context.Background(), planner, response, 1, state)
 	if err != nil {
 		t.Fatalf("handlePlannerResponseActions: %v", err)
 	}
@@ -484,7 +486,7 @@ func TestReasoningEngineResponseActions(t *testing.T) {
 	// A no-tool response ends the cycle.
 	noTool := &PlannerResponse{Content: "结束", OutputItems: assistantItems("结束")}
 	state = &cycleRuntimeState{response: noTool}
-	shouldBreak, err = engine.handlePlannerResponseActions(planner, noTool, 2, state)
+	shouldBreak, err = engine.handlePlannerResponseActions(context.Background(), planner, noTool, 2, state)
 	if err != nil {
 		t.Fatalf("handlePlannerResponseActions: %v", err)
 	}
@@ -755,4 +757,60 @@ func historyContains(history []chatcontext.LLMContextMessage, needle string) boo
 		}
 	}
 	return false
+}
+
+// blockingToolPlanner 在工具执行阶段阻塞在 ctx 上，用于验证取消语义能传导
+// 到 ExecuteToolCalls（T5）。
+type blockingToolPlanner struct {
+	*stubPlanner
+	mu        sync.Mutex
+	inFlight  bool
+	cancelled bool
+}
+
+func (b *blockingToolPlanner) ExecuteToolCalls(ctx context.Context, calls []PlannerToolCall, _ string) ([]PlannerToolResult, error) {
+	b.mu.Lock()
+	b.inFlight = true
+	b.cancelled = ctx.Err() != nil
+	b.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		b.mu.Lock()
+		b.cancelled = true
+		b.mu.Unlock()
+		// 工具实现把取消折算为失败回执（对齐 reply 工具 ctx.Done 分支）。
+		results := make([]PlannerToolResult, 0, len(calls))
+		for _, call := range calls {
+			results = append(results, PlannerToolResult{
+				CallID: call.CallID, ToolName: call.FuncName, Content: "已取消", Success: false,
+			})
+		}
+		return results, nil
+	case <-time.After(3 * time.Second):
+		return nil, fmt.Errorf("tool execution was never cancelled")
+	}
+}
+
+// TestEngineStopCancelsToolExecution 验证 T5：runtime.Stop() 会取消进行中的
+// ExecuteToolCalls（此前用 context.Background()，工具执行完全不可取消）。
+func TestEngineStopCancelsToolExecution(t *testing.T) {
+	planner := &blockingToolPlanner{stubPlanner: newStubPlanner(functionCallResponse("reply", "call-1"))}
+	runtime := newTestRuntime(Options{IsGroupSession: true, MaxInternalRounds: 5})
+	runtime.SetPlanner(planner)
+	runtime.Start(nil)
+	defer runtime.Stop()
+
+	runtime.RegisterMessage(runtimeMessage("m1", time.Now()))
+	// 等工具执行进入阻塞，然后 Stop → ctx 取消 → ExecuteToolCalls 返回。
+	waitFor(t, "tool execution in flight", func() bool {
+		planner.mu.Lock()
+		defer planner.mu.Unlock()
+		return planner.inFlight
+	})
+	runtime.Stop()
+	waitFor(t, "tool execution observed cancellation", func() bool {
+		planner.mu.Lock()
+		defer planner.mu.Unlock()
+		return planner.cancelled
+	})
 }

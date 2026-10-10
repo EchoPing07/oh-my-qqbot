@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"log/slog"
 	"math"
 
 	"golang.org/x/image/font"
@@ -85,10 +86,16 @@ func buildPlaceholderTile(label string, tileSize int) *image.RGBA {
 
 // buildLabeledTile mirrors _build_labeled_tile: 缩放进 256px 白底格子并在
 // 左上角画黑色半透明圆角序号角标。
+// S6：全量解码前先校验声明尺寸（image.Decode 会按声明宽高分配画布，
+// 超限声明可触发 fatal OOM）——超限/解析失败一律走占位图。
 func buildLabeledTile(imageBytes []byte, index int, tileSize int) *image.RGBA {
 	tile := image.NewRGBA(image.Rect(0, 0, tileSize, tileSize))
 	draw.Draw(tile, tile.Bounds(), &image.Uniform{color.RGBA{255, 255, 255, 255}}, image.Point{}, draw.Src)
 
+	if err := checkImageSizeLimit(imageBytes); err != nil {
+		slog.Warn("拼图候选图声明尺寸超限，使用占位图", "index", index, "err", err)
+		return buildPlaceholderTile(fmt.Sprintf("%d", index), tileSize)
+	}
 	src, _, err := image.Decode(bytes.NewReader(imageBytes))
 	if err != nil {
 		return buildPlaceholderTile(fmt.Sprintf("%d", index), tileSize)

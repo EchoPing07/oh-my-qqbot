@@ -205,8 +205,13 @@ func (r *Runtime) RequestPlannerInterruptForMessage(sessionMessage *message.Sess
 		r.log("%s 收到新消息，但已达到规划器连续打断上限，将等待当前请求自然完成; 消息编号=%s 连续打断次数=%d/%d",
 			r.LogPrefix(), messageID, consecutiveCount, maxCount)
 	default:
+		// T2 修复：messageCache 由 r.mu 保护（RegisterMessage 引擎/渠道两侧
+		// 并发追加），锁内取长度，避免与持锁写入并发。
+		r.mu.Lock()
+		messageCacheSize := len(r.messageCache)
+		r.mu.Unlock()
 		r.log("%s 收到新消息，发起规划器打断; 消息编号=%s 缓存条数=%d 时间戳=%.3f 连续打断次数=%d/%d",
-			r.LogPrefix(), messageID, len(r.messageCache), nowSeconds(), consecutiveCount, maxCount)
+			r.LogPrefix(), messageID, messageCacheSize, nowSeconds(), consecutiveCount, maxCount)
 	}
 }
 

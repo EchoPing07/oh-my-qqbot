@@ -210,6 +210,15 @@ func TestGetSessionName(t *testing.T) {
 	if name := m.GetSessionName(privateSession.SessionID); name != "小九的私聊" {
 		t.Fatalf("私聊会话名应按昵称生成: %q", name)
 	}
+
+	// T7 回归：昵称缺失时用 user_id 兜底，不再输出「的私聊」残缺名。
+	anonymousSession, err := m.GetOrCreateSession("qq", "10086", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name := m.GetSessionName(anonymousSession.SessionID); name != "10086的私聊" {
+		t.Fatalf("昵称缺失的私聊应按 user_id 兜底: %q", name)
+	}
 }
 
 func TestGetExistingSessionLoadsFromDB(t *testing.T) {

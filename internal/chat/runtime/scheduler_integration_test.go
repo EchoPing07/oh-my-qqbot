@@ -16,6 +16,7 @@ import (
 
 // TestSchedulerIntegrationSilentFrequency pins the frequency=0 short circuit.
 func TestSchedulerIntegrationSilentFrequency(t *testing.T) {
+	planner := newStubPlanner()
 	runtime := NewRuntime(Options{
 		SessionID:              "session",
 		IsGroupSession:         true,
@@ -24,17 +25,17 @@ func TestSchedulerIntegrationSilentFrequency(t *testing.T) {
 		MessageDebounceSeconds: 0.01,
 		Log:                    func(string, ...any) {},
 	})
+	runtime.SetPlanner(planner)
 	runtime.Start(nil)
 	defer runtime.Stop()
 
 	runtime.RegisterMessage(runtimeMessage("m1", time.Now()))
-	if !runtime.MessageTurnScheduled() {
-		t.Fatalf("silent mode must still consume the batch")
-	}
-	triggerKind, ok := runtime.NextTurnTrigger(nil)
-	if !ok || triggerKind != TriggerMessage {
-		t.Fatalf("trigger = %q/%v", triggerKind, ok)
-	}
+	// 持久可观察事实：silent 分支入队后引擎完成静默消费（pending 清空）。
+	// 不直接断言 MessageTurnScheduled——引擎 goroutine 消费触发后会清除该
+	// 标志，与之竞争会间歇失败。
+	waitFor(t, "silent mode must still consume the batch", func() bool {
+		return runtime.PendingMessageCount() == 0 && planner.requestCount() == 0
+	})
 	if !runtime.IsReplyFrequencySilent() {
 		t.Fatalf("IsReplyFrequencySilent = false")
 	}
@@ -44,11 +45,13 @@ func TestSchedulerIntegrationSilentFrequency(t *testing.T) {
 // `reply_trigger_mode = dynamic`.
 func TestSchedulerIntegrationDynamicMode(t *testing.T) {
 	now := float64(time.Now().UnixNano()) / 1e9
+	planner := newStubPlanner()
 	runtime := newTestRuntime(Options{
 		IsGroupSession:             true,
 		BaseReplyFrequency:         0.5,
 		DynamicReplyTriggerEnabled: true,
 	})
+	runtime.SetPlanner(planner)
 	runtime.scheduler = trigger.NewMessageTurnScheduler(runtime, trigger.SchedulerOptions{
 		DynamicReplyTriggerEnabled: true,
 		Now:                        func() float64 { return now },
@@ -68,19 +71,23 @@ func TestSchedulerIntegrationDynamicMode(t *testing.T) {
 	}
 
 	// A question-mark message scores 0.4532 and is released.
+	// 以「Planner 被实际调用」这一持久事实钉住放行（MessageTurnScheduled 会被
+	// 引擎 goroutine 消费后清除，直接断言与之竞争）。
 	question := runtimeMessage("m2-question", time.Now())
 	question.ProcessedPlainText = message.StringPtr("在看什么呢？")
 	runtime.RegisterMessage(question)
-	if !runtime.MessageTurnScheduled() {
-		t.Fatalf("a question-mark message must be released by the dynamic gate")
-	}
+	waitFor(t, "question-mark message released by the dynamic gate", func() bool {
+		return planner.requestCount() >= 1
+	})
 
 	// A @ message is a forced turn: it records the expected replies and enqueues.
+	forcedPlanner := newStubPlanner()
 	forcedRuntime := newTestRuntime(Options{
 		IsGroupSession:             true,
 		BaseReplyFrequency:         0.5,
 		DynamicReplyTriggerEnabled: true,
 	})
+	forcedRuntime.SetPlanner(forcedPlanner)
 	forcedRuntime.scheduler = trigger.NewMessageTurnScheduler(forcedRuntime, trigger.SchedulerOptions{
 		DynamicReplyTriggerEnabled: true,
 		Now:                        func() float64 { return now },
@@ -92,12 +99,10 @@ func TestSchedulerIntegrationDynamicMode(t *testing.T) {
 	forced := runtimeMessage("m3", time.Now())
 	forced.IsAt = true
 	forcedRuntime.RegisterMessage(forced)
-	if !forcedRuntime.MessageTurnScheduled() {
-		t.Fatalf("@ message must force the turn")
-	}
-	if !forcedRuntime.HasForcedTurnTrigger() {
-		t.Fatalf("forced turn state not armed")
-	}
+	waitFor(t, "@ message forces the turn", func() bool {
+		return forcedPlanner.requestCount() >= 1
+	})
+	// 强制触发的期望回复记账持久存在（RecordForcedTurn 已由调度器写入）。
 	decision := forcedRuntime.scheduler.DynamicGate().Evaluate(0.0, 0.5, now)
 	if math.Abs(decision.ExpectedReplies-trigger.ForcedTurnExpectedReplies) > 1e-12 {
 		t.Fatalf("forced expected replies = %v, want %v", decision.ExpectedReplies, trigger.ForcedTurnExpectedReplies)
@@ -107,10 +112,12 @@ func TestSchedulerIntegrationDynamicMode(t *testing.T) {
 // TestSchedulerIntegrationFrequencyMode pins the frequency threshold branch,
 // including the idle-compensation delay wiring.
 func TestSchedulerIntegrationFrequencyMode(t *testing.T) {
+	planner := newStubPlanner()
 	runtime := newTestRuntime(Options{
 		IsGroupSession:     true,
 		BaseReplyFrequency: 0.25, // threshold 4
 	})
+	runtime.SetPlanner(planner)
 	runtime.Start(nil)
 	defer runtime.Stop()
 
@@ -127,12 +134,12 @@ func TestSchedulerIntegrationFrequencyMode(t *testing.T) {
 	}
 
 	// Reaching the threshold triggers immediately.
+	// 以「Planner 被实际调用」钉住触发（MessageTurnScheduled 会被引擎 goroutine
+	// 消费后清除，直接断言与之竞争）。
 	for index := 0; index < 3; index++ {
 		runtime.RegisterMessage(runtimeMessage(fmt.Sprintf("m%d", index), time.Now()))
 	}
-	if !runtime.MessageTurnScheduled() {
-		t.Fatalf("4/4 messages must trigger")
-	}
+	waitFor(t, "4/4 messages must trigger", func() bool { return planner.requestCount() >= 1 })
 	if runtime.DeferredTurnDelay() != nil {
 		t.Fatalf("enqueueing must cancel the deferred check")
 	}
@@ -141,10 +148,12 @@ func TestSchedulerIntegrationFrequencyMode(t *testing.T) {
 // TestSchedulerIntegrationIdleBackoffBlocks pins the idle backoff wiring through
 // the real scheduler (including the bypass_pending_count interruption).
 func TestSchedulerIntegrationIdleBackoffBlocks(t *testing.T) {
+	planner := newStubPlanner()
 	runtime := newTestRuntime(Options{
 		IsGroupSession:     true,
 		BaseReplyFrequency: 0.25, // threshold 4
 	})
+	runtime.SetPlanner(planner)
 	runtime.Start(nil)
 	defer runtime.Stop()
 
@@ -168,12 +177,14 @@ func TestSchedulerIntegrationIdleBackoffBlocks(t *testing.T) {
 	}
 
 	// Pending messages >= bypass_pending_count (6) interrupt the backoff.
+	// 以「Planner 被实际调用」钉住旁路语义（理由同上：引擎消费后清除
+	// MessageTurnScheduled，直接断言与之竞争）。
 	for index := 0; index < 5; index++ {
 		runtime.RegisterMessage(runtimeMessage(fmt.Sprintf("b%d", index), time.Now()))
 	}
-	if !runtime.MessageTurnScheduled() {
-		t.Fatalf("6 pending messages must bypass the idle backoff")
-	}
+	waitFor(t, "6 pending messages must bypass the idle backoff", func() bool {
+		return planner.requestCount() >= 1
+	})
 	if until := runtime.IdleBackoff().Until(); until <= 0 {
 		t.Fatalf("the bypass must not reset the window: %v", until)
 	}

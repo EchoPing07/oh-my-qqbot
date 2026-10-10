@@ -14,10 +14,8 @@ func handleRecentLogs(d *Deps) http.HandlerFunc {
 			fail(w, http.StatusServiceUnavailable, "日志服务未启用")
 			return
 		}
+		// S9：limit 经 queryInt 统一钳制（1..500，负数/非法回退默认 100）。
 		limit := queryInt(r, "limit", 100)
-		if limit <= 0 || limit > 1000 {
-			limit = 100
-		}
 		level := r.URL.Query().Get("level")
 		ok(w, map[string]any{"logs": d.Logs.Recent(limit, level), "total": d.Logs.Total()})
 	}

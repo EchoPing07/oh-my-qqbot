@@ -28,11 +28,11 @@ func newTestEnv(t *testing.T, clock *fakeClock) (*chatmanager.ChatManager, *Hear
 	counter := &runtimeCounter{}
 	manager := NewHeartflowManager(Options{
 		ChatManager: chatManager,
-		NewRuntime: func(sessionID string) (*chatruntime.Runtime, error) {
+		NewRuntime: func(sessionID string, isGroupSession bool) (*chatruntime.Runtime, error) {
 			counter.add(sessionID)
 			return chatruntime.NewRuntime(chatruntime.Options{
 				SessionID:      sessionID,
-				IsGroupSession: true,
+				IsGroupSession: isGroupSession,
 			}), nil
 		},
 		Now: func() float64 { return clock.now() },

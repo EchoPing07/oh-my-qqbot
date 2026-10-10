@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 )
 
 // DynamicGate constants, copied verbatim from dynamic_gate.py.
@@ -80,7 +81,12 @@ type timedValue struct {
 
 // DynamicReplyGate mirrors dynamic_gate.DynamicReplyGate: the per-stream
 // dynamic reply gate state.
+//
+// T1 修复：Python 靠 asyncio 单线程事件循环天然串行；Go 侧 replyTimes 由引擎
+// goroutine（RecordReply）追加、同时渠道读循环 goroutine 在 Evaluate→prune
+// 里 reslice 同一切片，必须显式加锁。
 type DynamicReplyGate struct {
+	mu                  sync.Mutex
 	windowSeconds       float64
 	proactiveScores     []timedValue
 	forcedExpectations  []timedValue
@@ -103,6 +109,8 @@ func NewDynamicReplyGate(windowSeconds float64) *DynamicReplyGate {
 // TakeUncountedMessageIDs mirrors dynamic_gate.take_uncounted_message_ids:
 // return the ids not yet counted towards the expected reply count and mark them.
 func (g *DynamicReplyGate) TakeUncountedMessageIDs(messageIDs []string) []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	newIDs := make([]string, 0, len(messageIDs))
 	for _, messageID := range messageIDs {
 		if messageID == "" || g.countedMessageIDs[messageID] {
@@ -122,6 +130,12 @@ func (g *DynamicReplyGate) TakeUncountedMessageIDs(messageIDs []string) []string
 
 // IsRoundOpen mirrors dynamic_gate.is_round_open.
 func (g *DynamicReplyGate) IsRoundOpen(now float64) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.isRoundOpenLocked(now)
+}
+
+func (g *DynamicReplyGate) isRoundOpenLocked(now float64) bool {
 	return g.openRoundStartedAt != nil && now-*g.openRoundStartedAt < VirtualRoundSeconds
 }
 
@@ -129,7 +143,9 @@ func (g *DynamicReplyGate) IsRoundOpen(now float64) bool {
 // open virtual round the probability is overwritten (one score per round),
 // otherwise a new round starts.
 func (g *DynamicReplyGate) RecordProactiveDemand(probability float64, now float64) {
-	if g.IsRoundOpen(now) && len(g.proactiveScores) > 0 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.isRoundOpenLocked(now) && len(g.proactiveScores) > 0 {
 		g.proactiveScores[len(g.proactiveScores)-1].value = probability
 		return
 	}
@@ -141,21 +157,28 @@ func (g *DynamicReplyGate) RecordProactiveDemand(probability float64, now float6
 // CloseRound mirrors dynamic_gate.close_round: the planner actually ran, so the
 // current virtual round ends.
 func (g *DynamicReplyGate) CloseRound() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.openRoundStartedAt = nil
 }
 
 // RecordForcedTurn mirrors dynamic_gate.record_forced_turn.
 func (g *DynamicReplyGate) RecordForcedTurn(now float64) {
-	g.CloseRound()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.openRoundStartedAt = nil
 	g.forcedExpectations = append(g.forcedExpectations, timedValue{at: now, value: ForcedTurnExpectedReplies})
 }
 
 // RecordReply mirrors dynamic_gate.record_reply.
 func (g *DynamicReplyGate) RecordReply(now float64) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.replyTimes = append(g.replyTimes, now)
 }
 
-func (g *DynamicReplyGate) prune(now float64) {
+// pruneLocked 清理窗口外样本（调用方须持 g.mu）。
+func (g *DynamicReplyGate) pruneLocked(now float64) {
 	expireBefore := now - g.windowSeconds
 	g.proactiveScores = pruneTimedValues(g.proactiveScores, expireBefore)
 	g.forcedExpectations = pruneTimedValues(g.forcedExpectations, expireBefore)
@@ -180,6 +203,12 @@ func pruneTimedValues(values []timedValue, expireBefore float64) []timedValue {
 // ProactiveScores returns a copy of the scored probabilities inside the window
 // (used by tests and diagnostics).
 func (g *DynamicReplyGate) ProactiveScores() []float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.proactiveScoresLocked()
+}
+
+func (g *DynamicReplyGate) proactiveScoresLocked() []float64 {
 	scores := make([]float64, 0, len(g.proactiveScores))
 	for _, scored := range g.proactiveScores {
 		scores = append(scores, scored.value)
@@ -189,8 +218,10 @@ func (g *DynamicReplyGate) ProactiveScores() []float64 {
 
 // Evaluate mirrors dynamic_gate.evaluate.
 func (g *DynamicReplyGate) Evaluate(probability float64, frequency float64, now float64) DynamicGateDecision {
-	g.prune(now)
-	proactiveScores := g.ProactiveScores()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.pruneLocked(now)
+	proactiveScores := g.proactiveScoresLocked()
 	expectedProactive := 0.0
 	for _, score := range proactiveScores {
 		expectedProactive += score

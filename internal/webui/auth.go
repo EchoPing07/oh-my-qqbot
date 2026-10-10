@@ -108,10 +108,12 @@ func (m *TokenManager) ensureConfig() error {
 		}
 	}
 	m.config = cfg
+	// S3：日志只记事件，不再打印密码片段（新策略允许 6 位短密码，
+	// 截 4 位等于把整段凭据写进日志）。
 	if source == TokenSourceConfigured {
-		slog.Info(fmt.Sprintf("WebUI 登录密码已加载（用户自定义）: %s...", cfg.AccessToken[:min(4, len(cfg.AccessToken))]))
+		slog.Info("WebUI 登录密码已加载（用户自定义）")
 	} else {
-		slog.Info(fmt.Sprintf("WebUI 登录密码已加载: %s...", cfg.AccessToken[:min(4, len(cfg.AccessToken))]))
+		slog.Info("WebUI 登录密码已加载")
 	}
 	return nil
 }
@@ -183,7 +185,7 @@ func (m *TokenManager) createToken(source string, preserved tokenConfig) error {
 	m.mu.Lock()
 	m.config = cfg
 	m.mu.Unlock()
-	slog.Info(fmt.Sprintf("新的 WebUI Token 已生成: %s...", cfg.AccessToken[:8]))
+	slog.Info("新的 WebUI Token 已生成")
 	return nil
 }
 
@@ -233,11 +235,12 @@ func (m *TokenManager) VerifyToken(token string) bool {
 //
 // 简化认证：只要求「非空 + 至少 6 位 + 不含空白字符」，不再强制大小写与特殊符号组合。
 // 复杂度规则交给使用者自行决定（默认密码 admin123 本身也满足此规则）。
+// S11：长度按 rune 计数（与前端「6 位」文案语义对齐，中文等多字节字符按字算）。
 func validateCustomToken(token string) (bool, string) {
 	if token == "" {
 		return false, "密码不能为空"
 	}
-	if len(token) < 6 {
+	if len([]rune(token)) < 6 {
 		return false, "密码长度至少为 6 位"
 	}
 	for _, ch := range token {
@@ -249,42 +252,36 @@ func validateCustomToken(token string) (bool, string) {
 }
 
 // UpdateToken 更新为用户自定义固定 token（对齐 update_token）。
+// S3：日志只记事件，不再打印新旧密码片段；S11：保存失败时完整回滚
+// （AccessToken/UpdatedAt/TokenSource 一并恢复）。
 func (m *TokenManager) UpdateToken(newToken string) (bool, string) {
 	if valid, msg := validateCustomToken(newToken); !valid {
 		slog.Error("Token 格式无效", "reason", msg)
 		return false, msg
 	}
 	m.mu.Lock()
-	old := m.config.AccessToken
-	m.config.AccessToken = newToken
-	m.config.UpdatedAt = time.Now().Format(time.RFC3339)
-	m.config.TokenSource = TokenSourceConfigured
+	oldCfg := m.config
 	cfg := m.config
+	cfg.AccessToken = newToken
+	cfg.UpdatedAt = time.Now().Format(time.RFC3339)
+	cfg.TokenSource = TokenSourceConfigured
+	m.config = cfg
 	m.mu.Unlock()
 	if err := m.save(cfg); err != nil {
 		m.mu.Lock()
-		m.config.AccessToken = old
+		m.config = oldCfg
 		m.mu.Unlock()
 		return false, "更新失败: " + err.Error()
 	}
-	prefix := old
-	if len(prefix) > 8 {
-		prefix = prefix[:8]
-	}
-	// 新密码可能是短密码（简化认证允许 6 位），截断前先判长度防越界。
-	suffix := newToken
-	if len(suffix) > 8 {
-		suffix = suffix[:8]
-	}
-	slog.Info(fmt.Sprintf("Token 已更新: %s... -> %s...", prefix, suffix))
+	slog.Info("WebUI 登录密码已更新")
 	return true, "Token 更新成功"
 }
 
 // RegenerateToken 重新生成 token（对齐 regenerate_token；来源置为 configured，
 // 与 Python 版语义一致：重新生成后不再按 temporary 每次启动轮换）。
+// S3：日志只记事件，不打印 token 片段。
 func (m *TokenManager) RegenerateToken() string {
 	m.mu.Lock()
-	old := m.config.AccessToken
 	preserved := m.config
 	m.mu.Unlock()
 	if err := m.createToken(TokenSourceConfigured, preserved); err != nil {
@@ -294,13 +291,7 @@ func (m *TokenManager) RegenerateToken() string {
 	m.mu.Lock()
 	newToken := m.config.AccessToken
 	m.mu.Unlock()
-	prefix := old
-	if prefix == "" {
-		prefix = "无"
-	} else if len(prefix) > 8 {
-		prefix = prefix[:8]
-	}
-	slog.Info(fmt.Sprintf("WebUI Token 已重新生成: %s... -> %s...", prefix, newToken[:8]))
+	slog.Info("WebUI Token 已重新生成")
 	return newToken
 }
 

@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -184,10 +183,7 @@ func (s *LogService) Recent(limit int, level string) []LogEntry {
 	if limit > 0 && len(out) > limit {
 		out = out[len(out)-limit:]
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		// Recent 依 ring 顺序已按时间排列，无需再排；保险起见保持稳定序。
-		return false
-	})
+	// ring 顺序即时间序（旧→新），无需再排序（S11：删除此前的 no-op 排序死代码）。
 	return out
 }
 

@@ -2,6 +2,8 @@ package emoji
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -33,6 +35,7 @@ type Manager struct {
 	textLLM        TextLLM
 	prompts        PromptRenderer
 	rng            *rand.Rand
+	rngMu          sync.Mutex // S7：*rand.Rand 非并发安全，统一经 rngMu 访问
 	maxEmojiSizeMB float64
 	now            func() time.Time
 
@@ -101,8 +104,27 @@ func NewManager(options Options) *Manager {
 	}
 }
 
-// Rng 暴露随机源（子代理候选采样共用，保证可测试性）。
-func (m *Manager) Rng() *rand.Rand { return m.rng }
+// rngIntn / rngFloat64 / rngPerm 是 rng 的线程安全包装 — S7 修复：共享的
+// *rand.Rand 在多会话 runtime goroutine 并发采样时存在数据竞态（Intn/Float64/
+// Perm 都会写内部状态），统一经 rngMu 串行访问。原导出方法 Rng() 无包外
+// 调用方，已移除（避免把非并发安全的 *rand.Rand 泄漏出去）。
+func (m *Manager) rngIntn(n int) int {
+	m.rngMu.Lock()
+	defer m.rngMu.Unlock()
+	return m.rng.Intn(n)
+}
+
+func (m *Manager) rngFloat64() float64 {
+	m.rngMu.Lock()
+	defer m.rngMu.Unlock()
+	return m.rng.Float64()
+}
+
+func (m *Manager) rngPerm(n int) []int {
+	m.rngMu.Lock()
+	defer m.rngMu.Unlock()
+	return m.rng.Perm(n)
+}
 
 // Emojis 返回内存可发送池快照（调用方不得修改）。
 func (m *Manager) Emojis() []*Emoji {
@@ -156,27 +178,32 @@ func (m *Manager) EnsureEmojiSaved(ctx context.Context, emojiBytes []byte, emoji
 		}
 	}
 
-	// 写临时文件 → 修正扩展名 → 登记/回填记录。
-	tmpPath := filepath.Join(m.emojiDir, emojiHash+".tmp")
+	// 写临时文件（S10：文件名带随机后缀，防同 hash 并发写入互踩）
+	// → 识别格式 → 改名入库；识别失败不留 .tmp 残留。
+	tmpPath := filepath.Join(m.emojiDir, emojiHash+"."+randomHexSuffix()+".tmp")
 	if err := os.WriteFile(tmpPath, emojiBytes, 0o644); err != nil {
 		return nil, fmt.Errorf("写入表情包临时文件失败: %w", err)
 	}
 	format := detectImageFormat(emojiBytes)
-	if format != "" {
-		finalPath := filepath.Join(m.emojiDir, emojiHash+"."+format)
-		if err := os.Rename(tmpPath, finalPath); err != nil {
-			return nil, fmt.Errorf("重命名表情包文件失败: %w", err)
-		}
-		tmpPath = finalPath
+	if format == "" {
+		// S10：旧实现把识别失败的文件以 hash+.tmp 落盘入库，成为永久残留
+		// （清理器不覆盖 .tmp）。改为删除临时文件并报错跳过。
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("无法识别图片格式，跳过缓存: %s", emojiHash)
 	}
-	storedPath, err := m.paths.Serialize(tmpPath)
+	finalPath := filepath.Join(m.emojiDir, emojiHash+"."+format)
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("重命名表情包文件失败: %w", err)
+	}
+	storedPath, err := m.paths.Serialize(finalPath)
 	if err != nil {
 		return nil, fmt.Errorf("序列化表情包路径失败: %w", err)
 	}
 	emoji := &Emoji{
 		FileHash:    emojiHash,
-		FullPath:    tmpPath,
-		FileName:    filepath.Base(tmpPath),
+		FullPath:    finalPath,
+		FileName:    filepath.Base(finalPath),
 		ImageFormat: format,
 	}
 
@@ -191,7 +218,7 @@ func (m *Manager) EnsureEmojiSaved(ctx context.Context, emojiBytes []byte, emoji
 			if err := m.store.Upsert(ctx, existing); err != nil {
 				return nil, fmt.Errorf("缓存表情包记录到数据库时出错: %w", err)
 			}
-			return m.emojiFromRecord(existing, tmpPath), nil
+			return m.emojiFromRecord(existing, finalPath), nil
 		}
 		now := m.now()
 		record := &EmojiRecord{
@@ -835,7 +862,7 @@ func (m *Manager) GetEmojiForEmotion(emotionLabel string) *Emoji {
 	}
 	// heapq.nlargest(10, ...) 语义
 	top := topN(similarities, 10, func(a, b *emojiSimilarity) bool { return a.similarity > b.similarity })
-	selected := top[m.rng.Intn(len(top))]
+	selected := top[m.rngIntn(len(top))]
 	return selected.emoji
 }
 
@@ -881,7 +908,7 @@ func (m *Manager) ReplaceAnEmojiByLLM(ctx context.Context, newEmoji *Emoji, sess
 	}
 	selected := make([]*Emoji, 0, k)
 	for i := 0; i < k && total > 0; i++ {
-		pick := m.rng.Float64() * total
+		pick := m.rngFloat64() * total
 		acc := 0.0
 		for j, p := range probabilities {
 			acc += p
@@ -1085,10 +1112,12 @@ func (m *Manager) RegisterEmojiByFilename(ctx context.Context, filename string, 
 
 // CheckEmojiFileIntegrity mirrors check_emoji_file_integrity：维护数据库记录
 // 与内存可发送池，不主动删除 data/emoji 下的图片文件。
+// S10：顺带清理 .tmp 残留（历史遗留的 .tmp 记录 + 孤儿临时文件）。
 func (m *Manager) CheckEmojiFileIntegrity(ctx context.Context) {
 	if m.store == nil {
 		return
 	}
+	m.cleanupOrphanTmpFiles()
 	records, err := m.store.ListAll(ctx)
 	if err != nil {
 		slog.Error("[完整性检查] 读取记录失败", "err", err)
@@ -1098,6 +1127,15 @@ func (m *Manager) CheckEmojiFileIntegrity(ctx context.Context) {
 	removed := 0
 	for _, record := range records {
 		path, pathErr := m.paths.Resolve(record.FullPath)
+		// S10：旧版格式识别失败入库的 .tmp 记录一并删除（记录 + 文件）。
+		if strings.HasSuffix(strings.ToLower(record.FullPath), ".tmp") {
+			_ = m.store.Delete(ctx, record.ImageHash)
+			if pathErr == nil {
+				_ = os.Remove(path)
+			}
+			removed++
+			continue
+		}
 		if record.NoFileFlag || pathErr != nil || !fileExists(path) {
 			if record.IsRegistered {
 				slog.Warn("[完整性检查] 已注册表情包缺少实际文件，删除破损注册记录", "path", record.FullPath)
@@ -1121,6 +1159,36 @@ func (m *Manager) CheckEmojiFileIntegrity(ctx context.Context) {
 // ---------------------------------------------------------------------------
 // 小工具
 // ---------------------------------------------------------------------------
+
+// randomHexSuffix 生成 8 位十六进制随机后缀（S10：临时文件名防并发互踩）。
+// crypto/rand 失败（极罕见）时退化为纳秒时间戳。
+func randomHexSuffix() string {
+	b := make([]byte, 4)
+	if _, err := cryptorand.Read(b); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b)
+}
+
+// cleanupOrphanTmpFiles 清理 data/emoji 下的孤儿临时文件（写入中断/旧版残留）。
+// S10：仅删除 ModTime 超过 1 小时的 *.tmp，避开其他 goroutine 正在进行的写入。
+func (m *Manager) cleanupOrphanTmpFiles() {
+	entries, err := os.ReadDir(m.emojiDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-time.Hour)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".tmp") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(m.emojiDir, entry.Name()))
+	}
+}
 
 func fileExists(path string) bool {
 	info, err := os.Stat(path)

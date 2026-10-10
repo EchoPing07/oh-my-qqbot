@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	chatcontext "oh-my-qqbot/internal/chat/context"
@@ -321,4 +323,74 @@ func assertLogContains(t *testing.T, logs []string, needle string) {
 		}
 	}
 	t.Fatalf("logs %v do not contain %q", logs, needle)
+}
+
+// ---------------------------------------------------------------------------
+// T1 并发压力测试（本机无 gcc、-race 不可用，以高并发压力循环代替）
+// ---------------------------------------------------------------------------
+
+// TestSchedulerGateAndBackoffConcurrentStress 压力验证 trigger 包三处可变状态
+// 的并发安全：渠道读循环 goroutine 反复 ScheduleMessageTurn（动态门控评估 +
+// roundIDs + 计数消息清洗），引擎 goroutine 反复 RecordReply（replyTimes 追加
+// 与 prune reslice），第三个 goroutine 反复驱动空闲退避并直击
+// DynamicReplyGate。此前全部无锁，该测试在高并发下会触发切片并发读写 panic。
+func TestSchedulerGateAndBackoffConcurrentStress(t *testing.T) {
+	runtime := newStubScheduler()
+	runtime.isGroup = true
+	runtime.frequency = 0.5
+	runtime.threshold = 2
+	runtime.pending = []*message.SessionMessage{
+		testMessage("s1", 999), testMessage("s2", 999), testMessage("s3", 999),
+	}
+	scheduler := newScheduler(runtime, SchedulerOptions{DynamicReplyTriggerEnabled: true})
+	gate := scheduler.DynamicGate()
+
+	const (
+		workers     = 6
+		iterations  = 400
+		replyRounds = iterations * workers // 用于对账的回复总数
+	)
+	var replyCounter int64
+
+	var waitGroup sync.WaitGroup
+	// 1) 渠道读循环侧：反复调度（门控评估/延迟/入队）。
+	for index := 0; index < workers-1; index++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			for i := 0; i < iterations; i++ {
+				scheduler.ScheduleMessageTurn()
+			}
+		}()
+	}
+	// 2) 引擎侧：反复回复计数（tools/reply → RecordPlannerReply 链路）。
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		for i := 0; i < replyRounds; i++ {
+			scheduler.RecordReply()
+			atomic.AddInt64(&replyCounter, 1)
+		}
+	}()
+	// 3) 空闲退避与门控直击（读写 count/until、proactiveScores、roundIDs）。
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		for i := 0; i < iterations; i++ {
+			runtime.backoff.RecordCycleResult("planner_no_tool_end")
+			runtime.backoff.ShouldDelay(1)
+			runtime.backoff.Reset()
+			gate.Evaluate(0.9, 0.5, 1000+float64(i%50))
+			gate.RecordProactiveDemand(0.4, 1000+float64(i%50))
+			gate.TakeUncountedMessageIDs([]string{"x" + itoa(i)})
+			gate.CloseRound()
+			_ = gate.ProactiveScores()
+		}
+	}()
+	waitGroup.Wait()
+
+	// 对账：RecordReply 与 Evaluate.ActualReplies 必须精确相等（丢失即锁失效）。
+	if decision := gate.Evaluate(0.0, 0.5, 1000); decision.ActualReplies != int(replyCounter) {
+		t.Fatalf("回复计数丢失: gate=%d recorded=%d", decision.ActualReplies, replyCounter)
+	}
 }

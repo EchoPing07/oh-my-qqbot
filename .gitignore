@@ -13,3 +13,6 @@ dist/
 # playwright-cli 调试产物
 .playwright-cli/
 bin/
+
+# 调试报告（含真实凭据，禁止入库）
+docs/DEBUG_REPORT_*

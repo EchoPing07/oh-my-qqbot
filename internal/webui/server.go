@@ -225,6 +225,9 @@ func (s *Server) Start() error {
 }
 
 // corsMiddleware 可选 CORS（对齐 FastAPI CORSMiddleware 的最小面）。
+// S11：通配 * 时直接返回 Access-Control-Allow-Origin: * 且不带 credentials —
+// 「回显 Origin + Allow-Credentials: true」等于对任意站点开放可携带凭据的
+// 跨域读写，是危险组合（CORS 规范同样禁止二者搭配）。
 func corsMiddleware(next http.Handler, origins []string) http.Handler {
 	allow := map[string]bool{}
 	for _, o := range origins {
@@ -233,11 +236,16 @@ func corsMiddleware(next http.Handler, origins []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		if origin != "" && (allow[origin] || allow["*"]) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
+			if allow[origin] && !allow["*"] {
+				// 白名单来源：回显 Origin 并允许凭据。
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

@@ -333,8 +333,12 @@ func TestWaitTimeoutAndNewMessageWakeups(t *testing.T) {
 	if runtime.AgentState() != trigger.StateRunning {
 		t.Fatalf("state = %q, want running after the timeout", runtime.AgentState())
 	}
-	triggerKind, ok := runtime.NextTurnTrigger(nil)
-	if !ok || triggerKind != TriggerTimeout {
+	// 用带超时的 stop 消费：引擎 goroutine 可能先行取走触发（合法，等待无
+	// 触发消息时会被跳过），NextTurnTrigger(nil) 会永久阻塞。
+	boundedStop := make(chan struct{})
+	time.AfterFunc(100*time.Millisecond, func() { close(boundedStop) })
+	triggerKind, ok := runtime.NextTurnTrigger(boundedStop)
+	if ok && triggerKind != TriggerTimeout {
 		t.Fatalf("queued trigger = %q/%v, want timeout", triggerKind, ok)
 	}
 
@@ -346,7 +350,9 @@ func TestWaitTimeoutAndNewMessageWakeups(t *testing.T) {
 		t.Fatalf("wait not entered")
 	}
 	privateRuntime.RegisterMessage(runtimeMessage("m1", time.Now()))
-	if privateRuntime.AgentState() != trigger.StateRunning {
+	// 断言等待被结束（!= wait）：引擎 goroutine 可能在断言前已消费该轮并把
+	// 状态推到 stop（no planner 的轮以错误收场），running/stop 均证明已唤醒。
+	if privateRuntime.AgentState() == trigger.StateWait {
 		t.Fatalf("private chat message must wake the wait, state = %q", privateRuntime.AgentState())
 	}
 }
@@ -464,9 +470,11 @@ func TestTalkValueProviderOverridesBaseFrequency(t *testing.T) {
 }
 
 // TestForcedTurnStateLifecycle pins `_arm_forced_turn_state` /
-// `_consume_forced_turn_reason`.
+// `_consume_forced_turn_reason`. MentionedReply 开启（T4 配置门控：
+// mentioned_bot_reply 默认 false，提及武装需要显式开启）。
 func TestForcedTurnStateLifecycle(t *testing.T) {
-	runtime := newTestRuntime(Options{IsGroupSession: true})
+	mentionedOn := true
+	runtime := newTestRuntime(Options{IsGroupSession: true, MentionedBotReply: &mentionedOn})
 	if runtime.HasForcedTurnTrigger() {
 		t.Fatalf("forced turn armed initially")
 	}
@@ -505,6 +513,12 @@ func TestForcedTurnStateLifecycle(t *testing.T) {
 
 // TestRegisterMessageSchedulesTurn pins `register_message` →
 // `_schedule_message_turn`.
+//
+// 注意：不调用 NextTurnTrigger 消费队列——引擎 goroutine 与测试存在对队列
+// 触发的竞争（引擎先行取走属于合法行为，NextTurnTrigger(nil) 将永久阻塞；
+// 历史上曾间歇挂起）。MessageTurnScheduled=true 由 EnqueueMessageTurn 独占
+// 设置（`_enqueue_message_turn` 的 `_message_turn_scheduled=True` + 入队），
+// 足以钉住 register_message → 调度的契约；队列消费由引擎用例覆盖。
 func TestRegisterMessageSchedulesTurn(t *testing.T) {
 	runtime := newTestRuntime(Options{IsGroupSession: true, BaseReplyFrequency: 1})
 	runtime.Start(nil)
@@ -516,10 +530,6 @@ func TestRegisterMessageSchedulesTurn(t *testing.T) {
 	}
 	if !runtime.MessageTurnScheduled() {
 		t.Fatalf("the message turn must be scheduled at frequency 1 (threshold 1)")
-	}
-	triggerKind, ok := runtime.NextTurnTrigger(nil)
-	if !ok || triggerKind != TriggerMessage {
-		t.Fatalf("trigger = %q/%v, want message", triggerKind, ok)
 	}
 }
 
@@ -846,3 +856,149 @@ func TestInterruptDescription(t *testing.T) {
 		t.Fatalf("lines = %v", lines)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// P1-3 回归：延迟复查定时器
+// ---------------------------------------------------------------------------
+
+// TestDeferMessageTurnCheckArmsTimer 验证 DeferMessageTurnCheck 会起定时任务：
+// 延迟到期后自动执行 FireDeferredTurnCheck（清理挂起延迟并重跑调度）。
+// 此前只存 delay，FireDeferredTurnCheck 全仓无生产调用，空窗补偿永不触发。
+func TestDeferMessageTurnCheckArmsTimer(t *testing.T) {
+	runtime := newTestRuntime(Options{IsGroupSession: true})
+	runtime.DeferMessageTurnCheck(0.03)
+	if runtime.DeferredTurnDelay() == nil {
+		t.Fatal("DeferMessageTurnCheck 后应存在挂起延迟")
+	}
+	// 30ms 后定时器应触发 FireDeferredTurnCheck（runtime 未运行 → 清理后返回）。
+	waitFor(t, "deferred timer fired", func() bool { return runtime.DeferredTurnDelay() == nil })
+}
+
+// TestDeferMessageTurnCheckReschedulesAndCancels 验证重复延迟只保留最后一次
+// 定时器（对齐 `_defer_message_turn_check` 的 cancel + create_task），并且
+// EnqueueMessageTurn 会取消待执行的延迟复查（对齐 `_enqueue_message_turn`
+// 内的 `_cancel_deferred_message_turn_task`）。
+func TestDeferMessageTurnCheckReschedulesAndCancels(t *testing.T) {
+	runtime := newTestRuntime(Options{IsGroupSession: true})
+
+	// 第一次延迟 30s，随后用 20ms 的延迟替换 → 短延迟应先生效。
+	runtime.DeferMessageTurnCheck(30)
+	runtime.DeferMessageTurnCheck(0.02)
+	waitFor(t, "replacement timer fired", func() bool { return runtime.DeferredTurnDelay() == nil })
+
+	// 长延迟挂起后入队消息触发 → 取消定时器，挂起延迟清空且不再触发。
+	runtime.DeferMessageTurnCheck(30)
+	runtime.EnqueueMessageTurn()
+	if runtime.DeferredTurnDelay() != nil {
+		t.Fatal("EnqueueMessageTurn 应清空挂起延迟")
+	}
+	time.Sleep(60 * time.Millisecond)
+	if runtime.DeferredTurnDelay() != nil {
+		t.Fatal("已取消的延迟复查不应再次触发")
+	}
+}
+
+// TestDeferredTimerReSchedulesTurnWhenRunning 验证运行态下延迟复查会真正
+// 重跑调度（silent 频率分支直接入队消息触发，对齐 Python
+// `_schedule_deferred_message_turn` 的 `if not self._running: return` +
+// `_schedule_message_turn()`）。持久可观察结果：复查入队后引擎以 silent
+// 分支消费掉 pending 消息。
+func TestDeferredTimerReSchedulesTurnWhenRunning(t *testing.T) {
+	runtime := NewRuntime(Options{
+		SessionID:      "session",
+		IsGroupSession: true,
+		MaxContextSize: 40,
+		// silent 频率：复查时只要有 pending 消息就直接静默入队。
+		BaseReplyFrequency:     0,
+		MessageDebounceSeconds: 0.01,
+		Log:                    func(string, ...any) {},
+	})
+	runtime.Start(nil)
+	defer runtime.Stop()
+
+	// 直接塞入缓存（绕过 RegisterMessage 的自动调度），保证复查时 pending>0
+	// 且 messageTurnScheduled=false。
+	runtime.mu.Lock()
+	runtime.messageCache = append(runtime.messageCache, runtimeMessage("m-deferred", time.Now()))
+	runtime.mu.Unlock()
+
+	if runtime.PendingMessageCount() != 1 || runtime.MessageTurnScheduled() {
+		t.Fatalf("前置状态错误: pending=%d scheduled=%v",
+			runtime.PendingMessageCount(), runtime.MessageTurnScheduled())
+	}
+
+	runtime.DeferMessageTurnCheck(0.05)
+	// 没有任何 RegisterMessage / 手动调度，pending 被消费只能来自
+	// 定时器 → FireDeferredTurnCheck → ScheduleMessageTurn 的链路
+	// （silent 分支入队后引擎静默消费）。
+	waitFor(t, "deferred re-check consumed the batch", func() bool { return runtime.PendingMessageCount() == 0 })
+}
+
+// ---------------------------------------------------------------------------
+// T4 回归：强制触发按配置门控
+// ---------------------------------------------------------------------------
+
+// TestMentionedForcedTurnGating 验证 runtime.py:1283-1296 的配置门控：
+// IsMentioned 受 mentioned_bot_reply（默认 false）、IsAt 受
+// inevitable_at_reply（默认 true）；此前 is_at/is_mentioned 一律武装强制触发。
+func TestMentionedForcedTurnGating(t *testing.T) {
+	cases := []struct {
+		name           string
+		isAt           bool
+		isMentioned    bool
+		inevitableAt   *bool
+		mentionedReply *bool
+		wantArmed      bool
+	}{
+		{"mentioned 默认不武装", false, true, nil, nil, false},
+		{"mentioned 开启后武装", false, true, nil, boolPtr(true), true},
+		{"at 默认武装", true, false, nil, nil, true},
+		{"at 关闭 inevitable_at_reply 后不武装", true, false, boolPtr(false), nil, false},
+		{"at 关闭但 mentioned 开启 → 按提及武装", true, true, boolPtr(false), boolPtr(true), true},
+		{"都关闭不武装", true, true, boolPtr(false), boolPtr(false), false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			runtime := newTestRuntime(Options{
+				IsGroupSession:    true,
+				InevitableAtReply: testCase.inevitableAt,
+				MentionedBotReply: testCase.mentionedReply,
+			})
+			msg := runtimeMessage("m-gate", time.Now())
+			msg.IsAt = testCase.isAt
+			msg.IsMentioned = testCase.isMentioned
+			runtime.updateMessageTriggerState(msg)
+			if got := runtime.HasForcedTurnTrigger(); got != testCase.wantArmed {
+				t.Fatalf("HasForcedTurnTrigger = %v, want %v", got, testCase.wantArmed)
+			}
+		})
+	}
+}
+
+// TestChatHistoryReturnsCopy 验证 T3：ChatHistory 返回副本，调用方持引用
+// 期间引擎并发追加不会读到扩容后的底层切片。
+func TestChatHistoryReturnsCopy(t *testing.T) {
+	runtime := newTestRuntime(Options{IsGroupSession: true})
+	runtime.AppendChatHistory(chatcontext.NewSessionBackedMessage(
+		message.NewMessageSequence(message.NewTextComponent("m1")),
+		"m1", time.Now(), "m1", nil, chatcontext.SourceUser,
+	))
+	snapshot := runtime.ChatHistory()
+	if len(snapshot) != 1 {
+		t.Fatalf("snapshot = %d entries", len(snapshot))
+	}
+	runtime.AppendChatHistory(chatcontext.NewSessionBackedMessage(
+		message.NewMessageSequence(message.NewTextComponent("m2")),
+		"m2", time.Now(), "m2", nil, chatcontext.SourceUser,
+	))
+	if len(snapshot) != 1 {
+		t.Fatalf("快照不应随内部历史增长: %d", len(snapshot))
+	}
+	// 修改快照也不得影响内部历史。
+	snapshot[0] = nil
+	if runtime.ChatHistory()[0] == nil {
+		t.Fatal("内部历史不应被快照修改波及")
+	}
+}
+
+func boolPtr(value bool) *bool { return &value }

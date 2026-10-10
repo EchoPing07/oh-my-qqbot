@@ -92,6 +92,8 @@ export async function getMcpStatus(): Promise<McpStatus> {
 export interface ExportOptions {
   include_bot: boolean
   include_model: boolean
+  /** S2：是否包含明文密钥（默认 false — 密钥置空，导入端「留空保留旧值」兜底）。 */
+  include_secrets?: boolean
 }
 
 /** 导出配置 JSON（浏览器触发下载）。 */

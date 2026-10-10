@@ -16,10 +16,8 @@ func handleSnapshots(d *Deps) http.HandlerFunc {
 			})
 			return
 		}
+		// S9：limit 经 queryInt 统一钳制（1..500，负数/非法回退默认 50）。
 		limit := queryInt(r, "limit", 50)
-		if limit <= 0 || limit > 500 {
-			limit = 50
-		}
 		sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
 		snaps := d.Snapshots.RecentPlannerSnapshots(sessionID, limit)
 		if snaps == nil {

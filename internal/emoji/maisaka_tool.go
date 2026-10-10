@@ -210,12 +210,12 @@ func (m *Manager) buildCollageFromPool(available []*Emoji, candidateCount int, s
 	return pngBytes, indexToHash, startIndex, nil
 }
 
-// sampleEmojis mirrors random.sample（无放回采样）。
+// sampleEmojis mirrors random.sample（无放回采样）。S7：经 rngPerm 线程安全取随机排列。
 func (m *Manager) sampleEmojis(pool []*Emoji, n int) []*Emoji {
 	if n >= len(pool) {
 		return append([]*Emoji{}, pool...)
 	}
-	indexes := m.rng.Perm(len(pool))[:n]
+	indexes := m.rngPerm(len(pool))[:n]
 	sampled := make([]*Emoji, 0, n)
 	for _, idx := range indexes {
 		sampled = append(sampled, pool[idx])

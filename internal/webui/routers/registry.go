@@ -105,6 +105,8 @@ func Register(mux *http.ServeMux, d *Deps) {
 
 	// ---- user-emojis 路由（routers/user_emoji.py 简化面）----
 	mux.HandleFunc("GET /api/webui/user-emojis", requireAuth(d, handleUserEmojiList(d)))
+	// S8：补上列表项 content_url 指向的内容回源路由。
+	mux.HandleFunc("GET /api/webui/user-emojis/{emoji_id}/content", requireAuth(d, handleUserEmojiContent(d)))
 	mux.HandleFunc("DELETE /api/webui/user-emojis/{emoji_id}", requireAuth(d, handleUserEmojiDelete(d)))
 }
 
@@ -141,7 +143,14 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
+// maxListLimit 是列表类查询参数的统一上限（S9：?limit=-1 直通 SQLite 等于
+// 不限制，可拖全表；?limit=100000 可放大单请求成本）。
+const maxListLimit = 500
+
 // queryInt 读取整型查询参数（缺失/非法返回 def）。
+// S9 统一钳制：<=0（含负数）回退默认值；超过 maxListLimit 截到上限。
+// 调用点复核：limit/offset（resources/chat/memory/logs/reasoning）与
+// statistics 的 hours/days 窗口参数均适用该钳制（负数→默认值，≤500）。
 func queryInt(r *http.Request, name string, def int) int {
 	raw := strings.TrimSpace(r.URL.Query().Get(name))
 	if raw == "" {
@@ -150,6 +159,12 @@ func queryInt(r *http.Request, name string, def int) int {
 	n, err := strconv.Atoi(raw)
 	if err != nil {
 		return def
+	}
+	if n <= 0 {
+		return def
+	}
+	if n > maxListLimit {
+		return maxListLimit
 	}
 	return n
 }

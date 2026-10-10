@@ -44,6 +44,18 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
+// WS 读写防护参数（S5：此前读循环无读上限/无读 deadline，慢连接或恶意客户端
+// 可悬挂连接、放大内存）。可变量便于测试缩短周期。
+var (
+	// wsReadLimit 是单帧读上限（64KB：客户端协议消息只有 ping/subscribe 等
+	// 小 JSON；超限直接断开，防超大帧内存放大）。
+	wsReadLimit int64 = 64 << 10
+	// wsReadWait 是读 deadline 容忍期：期内未收到任何消息/pong 即断开。
+	wsReadWait = 60 * time.Second
+	// wsPingPeriod 是服务端 ping 周期（须 < wsReadWait，留出 pong 往返余量）。
+	wsPingPeriod = 50 * time.Second
+)
+
 // wsClient 是一条已认证连接。
 type wsClient struct {
 	id   string
@@ -169,12 +181,28 @@ func bearerTokenOf(r *http.Request) string {
 	return ""
 }
 
+// configureReadGuard 为连接挂上 S5 读防护：单帧上限 + 读 deadline +
+// pong 续期（收到 pong 即把读 deadline 重推 wsReadWait）。
+func configureReadGuard(client *wsClient) {
+	client.conn.SetReadLimit(wsReadLimit)
+	client.conn.SetPongHandler(func(string) error {
+		return client.conn.SetReadDeadline(time.Now().Add(wsReadWait))
+	})
+}
+
 // readPump 读循环：解析客户端消息并分发（对齐 handle_client_message）。
+// S5：每轮读之前重置读 deadline；对端存活由 ping/pong 续期，死连接
+// （断网/无 pong）在 wsReadWait 内回收，超限帧直接断开。
 func (h *WSHub) readPump(client *wsClient) {
 	defer h.disconnect(client)
+	configureReadGuard(client)
 	for {
+		_ = client.conn.SetReadDeadline(time.Now().Add(wsReadWait))
 		_, raw, err := client.conn.ReadMessage()
 		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				slog.Warn("WS 读连接异常断开", "connection", client.id, "err", err)
+			}
 			return
 		}
 		var msg map[string]any
@@ -363,13 +391,25 @@ func (h *WSHub) enqueue(client *wsClient, payload []byte) {
 	}
 }
 
-// writePump 写循环。
+// writePump 写循环。S5：按 wsPingPeriod 周期发 ping，配合读侧 pong 续期
+// 维持心跳（WriteControl 允许与其他写并发，仍取写锁保持串行）。
 func (h *WSHub) writePump(client *wsClient) {
+	ticker := time.NewTicker(wsPingPeriod)
+	defer ticker.Stop()
 	for {
 		select {
 		case payload := <-client.sendCh:
 			client.mu.Lock()
 			err := client.conn.WriteMessage(websocket.TextMessage, payload)
+			client.mu.Unlock()
+			if err != nil {
+				h.disconnect(client)
+				return
+			}
+		case <-ticker.C:
+			client.mu.Lock()
+			err := client.conn.WriteControl(websocket.PingMessage, nil,
+				time.Now().Add(10*time.Second))
 			client.mu.Unlock()
 			if err != nil {
 				h.disconnect(client)

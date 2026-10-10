@@ -13,6 +13,7 @@ package routers
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	contracts "oh-my-qqbot/internal"
@@ -134,4 +135,20 @@ type Deps struct {
 	NewsURL string
 	// HTTPClient 资讯代理等出站请求客户端（nil 时用默认 8s 超时客户端）。
 	HTTPClient *http.Client
+
+	// loginRateMu / loginRate 是登录限速器的懒初始化字段（S1：Deps 可能被
+	// 直接构造，如测试；首次经 LoginRateLimiter() 访问时创建）。
+	loginRateMu sync.Mutex
+	loginRate   *loginRateLimiter
+}
+
+// LoginRateLimiter 返回登录限速器（懒初始化，每个 Deps 一份；S1 防爆破，
+// 对齐 MaiBot src/webui/core/rate_limiter.py）。
+func (d *Deps) LoginRateLimiter() *loginRateLimiter {
+	d.loginRateMu.Lock()
+	defer d.loginRateMu.Unlock()
+	if d.loginRate == nil {
+		d.loginRate = newLoginRateLimiter()
+	}
+	return d.loginRate
 }

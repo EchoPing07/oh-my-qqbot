@@ -21,7 +21,10 @@ const HeartflowMaxActiveChats = 100
 
 // RuntimeFactory 创建（并启动）一个 runtime 的注入边界：装配层提供
 // runtime.Options 的具体填充（避免 heartflow 依赖 config）。
-type RuntimeFactory func(sessionID string) (*chatruntime.Runtime, error)
+// isGroupSession 来自已查到的 BotChatSession.IsGroupSession()（对齐 Python
+// runtime.chat_stream.is_group_session 的真实来源），session_id 是 md5 hex
+// 串、无法从字符串本身判定群/私。
+type RuntimeFactory func(sessionID string, isGroupSession bool) (*chatruntime.Runtime, error)
 
 // HeartflowManager mirrors HeartflowManager.
 type HeartflowManager struct {
@@ -100,7 +103,10 @@ func (m *HeartflowManager) GetOrCreateHeartflowChat(sessionID string) (*chatrunt
 		return nil, fmt.Errorf("未找到 session_id=%s 对应的聊天流", sessionID)
 	}
 
-	newChat, err := m.newRuntime(sessionID)
+	// P0-2 修复：群/私判定取自聊天流真实身份（BotChatSession.IsGroupSession，
+	// 对齐 Python heartflow_manager 把 chat_stream 传给 runtime 的语义），
+	// 不再由 session_id 字符串猜测（md5 hex 串不含任何可判定后缀）。
+	newChat, err := m.newRuntime(sessionID, chatSession.IsGroupSession())
 	if err != nil {
 		return nil, err
 	}

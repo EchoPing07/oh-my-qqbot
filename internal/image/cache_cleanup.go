@@ -23,6 +23,11 @@ var cacheImageExtensions = map[string]bool{
 	".jpg": true, ".png": true, ".webp": true,
 }
 
+// tmpExtension 是临时文件扩展名 — S10：图片写入走 tmp → rename 流程，写入
+// 中断会留下 hash+.tmp 残留，旧版孤儿清理不覆盖它们，成为永久垃圾。
+// 孤儿清理时把 .tmp 纳入（tracked 校验仍只认图片扩展名）。
+const tmpExtension = ".tmp"
+
 // CleanupBatchSize mirrors _CLEANUP_BATCH_SIZE = 1000。
 const CleanupBatchSize = 1000
 
@@ -175,7 +180,9 @@ func (m *ImageManager) cleanupOrphanImageFiles(ctx context.Context, cutoff time.
 		if result.RemovedOrphanFiles >= CleanupBatchSize {
 			return fs.SkipAll
 		}
-		if !cacheImageExtensions[strings.ToLower(filepath.Ext(path))] {
+		// S10：图片扩展名之外的 .tmp（写入中断残留）同样按孤儿清理。
+		ext := strings.ToLower(filepath.Ext(path))
+		if !cacheImageExtensions[ext] && ext != tmpExtension {
 			return nil
 		}
 		if stat, statErr := d.Info(); statErr != nil {

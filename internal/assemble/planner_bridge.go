@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"oh-my-qqbot/internal/chat/runtime"
 	"oh-my-qqbot/internal/chat/tools"
 	"oh-my-qqbot/internal/llm"
+	"oh-my-qqbot/internal/prompt"
 )
 
 // plannerBridge satisfies runtime.PlannerLLM for every session. One instance
@@ -92,13 +94,29 @@ func (p *plannerBridge) ForSession(sessionID string) *plannerBridge {
 	return &view
 }
 
+// sessionIsGroup 解析会话的群/私属性（P0-2 修复：此前 ToolCtx 硬编码 true，
+// 私聊工具行为全部按群聊处理）。取值顺序：心流 runtime（运行期真值，对齐
+// Python runtime.chat_stream.is_group_session）→ ChatManager 会话记录 →
+// 兜底 true（与历史行为一致，避免未知会话误判）。
+func (a *App) sessionIsGroup(sessionID string) bool {
+	if rt := a.heartflowRuntime(sessionID); rt != nil {
+		return rt.IsGroupSession()
+	}
+	if a.ChatManager != nil {
+		if session := a.ChatManager.GetExistingSessionBySessionID(sessionID); session != nil {
+			return session.IsGroupSession()
+		}
+	}
+	return true
+}
+
 // ToolCtx builds a RuntimeContext for the given session.
 func (a *App) ToolCtx(sessionID string) *tools.RuntimeContext {
 	g := a.Cfg.GetGlobalConfig()
 	flags := a.ToolRegistryFlags()
 	return &tools.RuntimeContext{
 		SessionID:               sessionID,
-		IsGroupSession:          true,
+		IsGroupSession:          a.sessionIsGroup(sessionID),
 		LogPrefix:               "[" + sessionID + "]",
 		BotName:                 g.Bot.Nickname,
 		EnableReplyAt:           flags.EnableReplyAt,
@@ -116,9 +134,16 @@ func (a *App) ToolCtx(sessionID string) *tools.RuntimeContext {
 
 // ChatLoopStep implements runtime.PlannerLLM.ChatLoopStep: one planner request.
 func (p *plannerBridge) ChatLoopStep(ctx context.Context, request runtime.PlannerRequest) (*runtime.PlannerResponse, error) {
+	// P1-5 修复：渲染 system 提示词并置于请求首位（对齐 chat_loop_service.py
+	// `_build_request_messages` 的 system item 在历史之前）。此前只发裸历史，
+	// 人设/行为风格/工具使用说明全部丢失。
+	messages := plannerMessages(request)
+	if systemPrompt := p.plannerSystemPrompt(p.app.sessionIsGroup(request.SessionID)); systemPrompt != "" {
+		messages = append([]contracts.ChatMessage{{Role: contracts.RoleSystem, Content: systemPrompt}}, messages...)
+	}
 	req := contracts.ChatRequest{
 		MaxTokens: 16384,
-		Messages:  plannerMessages(request),
+		Messages:  messages,
 	}
 	for _, def := range request.ToolDefinitions {
 		// L1 修复：工具定义必须携带 parameters schema（BuildActionToolDefinitions
@@ -407,3 +432,123 @@ func (p *plannerBridge) NotifyCycleEnd(ctx context.Context, info runtime.CycleIn
 }
 
 var _ runtime.PlannerLLM = (*plannerBridge)(nil)
+
+// ---------------------------------------------------------------------------
+// Planner system prompt（P1-5）
+// ---------------------------------------------------------------------------
+
+// plannerChatPromptName 对齐 chat_loop_service._get_chat_prompt_name 的默认
+// 模板（focus 模式模板 maisaka_chat_focus 待焦点模式接线时启用）。
+const plannerChatPromptName = "maisaka_chat"
+
+// plannerFieldPattern 匹配模板里的 {var} 占位符（与 replyer 的手动替换同一
+// 形态；用手动替换而非 RenderPrompt，保证模板新增字段缺失时降级而不是报错）。
+var plannerFieldPattern = regexp.MustCompile(`\{([^{}]+)\}`)
+
+// plannerSystemPrompt 渲染 Planner 的 system 提示词。
+//
+// 对齐 chat_loop_service.py 的 `_build_chat_system_prompt` +
+// `build_prompt_template_context`（chat_loop_service.py:760-788）：
+//   - bot_name ← global_config.bot.nickname
+//   - behavior_style ← global_config.personality.behavior_style
+//   - group_chat_attention_block ← chat.reply_style.group_chat_prompt /
+//     private_chat_prompts（按群/私取一）
+//   - query_memory_rule ← 按群/私的记忆检索提示
+//
+// 模板来自 prompts/<locale>/maisaka_chat.prompt；模板缺失或加载失败时降级为
+// 内置兜底提示词（与 replyer 的兜底策略一致）。
+func (p *plannerBridge) plannerSystemPrompt(isGroup bool) string {
+	botName, behaviorStyle, groupPrompt, privatePrompt := "", "", "", ""
+	if p.app.Cfg != nil {
+		global := p.app.Cfg.GetGlobalConfig()
+		botName = strings.TrimSpace(global.Bot.Nickname)
+		behaviorStyle = strings.TrimSpace(global.Personality.BehaviorStyle)
+		groupPrompt = strings.TrimSpace(global.Chat.ReplyStyle.GroupChatPrompt)
+		privatePrompt = strings.TrimSpace(global.Chat.ReplyStyle.PrivateChatPrompt)
+	}
+	fields := map[string]string{
+		"bot_name":                   botName,
+		"behavior_style":             behaviorStyle,
+		"group_chat_attention_block": buildPlannerAttentionBlock(isGroup, groupPrompt, privatePrompt),
+		"query_memory_rule":          buildPlannerQueryMemoryRule(isGroup),
+	}
+	if manager := p.app.promptManager(); manager != nil {
+		if tpl, err := manager.GetPrompt(plannerChatPromptName); err == nil && tpl != nil {
+			return renderPlannerTemplate(prompt.TemplateText(tpl), fields)
+		}
+	}
+	return buildFallbackPlannerSystemPrompt(fields)
+}
+
+// buildPlannerAttentionBlock mirrors `_build_group_chat_attention_block`
+// （chat_loop_service.py:812-829）。
+func buildPlannerAttentionBlock(isGroup bool, groupPrompt string, privatePrompt string) string {
+	var promptLines []string
+	if isGroup {
+		if groupPrompt != "" {
+			promptLines = append(promptLines, "通用注意事项：\n"+groupPrompt)
+		}
+	} else {
+		if privatePrompt != "" {
+			promptLines = append(promptLines, "通用注意事项：\n"+privatePrompt)
+		}
+	}
+	if len(promptLines) == 0 {
+		return ""
+	}
+	return "在该聊天中的注意事项：\n" + strings.Join(promptLines, "\n\n") + "\n"
+}
+
+// buildPlannerQueryMemoryRule mirrors `_build_query_memory_rule`
+// （chat_loop_service.py:847-865，zh-CN 文案照抄）。
+func buildPlannerQueryMemoryRule(isGroup bool) string {
+	if isGroup {
+		return "- query_memory()：只有回复明显依赖群内过去对话、共同经历、公开约定、任务进展或近期线索时使用；" +
+			"不要为了寒暄、即时情绪回应、轻松接话、只看最近消息就能回答的内容而检索。不要把私聊或个人隐私记忆带到群聊里。"
+	}
+	return "- query_memory()：当对方提到“之前”“上次”“最近”“还记得吗”“我喜欢”“我说过”等信号，" +
+		"或回复依赖长期偏好、先前承诺、共同经历、人物长期信息时，可以更积极检索。"
+}
+
+// renderPlannerTemplate 手动替换模板字段（对齐 replyer.buildSystemPrompt 的
+// 渲染方式）：字段值经 RenderString 保护，值中的 { } 不参与占位符解析；
+// 模板中未提供的字段保持原样。
+func renderPlannerTemplate(template string, fields map[string]string) string {
+	out := plannerFieldPattern.ReplaceAllStringFunc(template, func(match string) string {
+		name := strings.TrimSuffix(strings.TrimPrefix(match, "{"), "}")
+		if value, ok := fields[name]; ok {
+			return prompt.RenderString(value)
+		}
+		return match
+	})
+	return prompt.RestoreString(out)
+}
+
+// buildFallbackPlannerSystemPrompt 构造模板不可用时的内置兜底 system 提示词
+// （骨架对齐 maisaka_chat.prompt，人设与场景注意事项来自同一份 fields）。
+func buildFallbackPlannerSystemPrompt(fields map[string]string) string {
+	botName := fields["bot_name"]
+	if botName == "" {
+		botName = "bot"
+	}
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "你的任务是分析聊天和聊天中的互动情况，然后做出下一步动作。\n")
+	fmt.Fprintf(&builder, "你需要关注 %s 与用户的对话来为 %s 选择正确的动作和行为\n\n", botName, botName)
+	if behaviorStyle := fields["behavior_style"]; behaviorStyle != "" {
+		fmt.Fprintf(&builder, "%s的行为风格：%s\n\n以上 %s的行为风格可以帮助你更好地决策\n\n", botName, behaviorStyle, botName)
+	}
+	builder.WriteString("请你对当前场景和输出规则来进行分析。请注意，你不是 " + botName +
+		" 本人，不要替 " + botName + " 发言，你需要给 " + botName +
+		" 的行为做出决策，请你结合 " + botName + " 的行为风格、当前情况和可用工具做出决策。\n")
+	builder.WriteString("你需要先搜集能够帮助" + botName + "进行下一步行动的信息，然后再给出思考。\n\n")
+	if attentionBlock := fields["group_chat_attention_block"]; attentionBlock != "" {
+		builder.WriteString(attentionBlock + "\n")
+	}
+	builder.WriteString("# Using your tools\n")
+	builder.WriteString("- 当你判断" + botName + "现在应该正式对用户发出一条可见回复时调用 reply。调用后生成一条真正展示给用户的回复。" +
+		"发言必须通过 reply 工具，不然用户无法看见；注意，你无法不调用 reply 工具直接回复。\n")
+	builder.WriteString(fields["query_memory_rule"] + "\n")
+	builder.WriteString("- 你可以在一次响应中调用多个工具；有依赖关系的调用必须等待前序结果，不要并行。\n")
+	builder.WriteString("- 不使用工具：当没有更多操作需要做时，结束思考，不要调用任何工具。\n")
+	return builder.String()
+}

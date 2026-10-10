@@ -17,6 +17,8 @@ export function DataTransferPage() {
   // 导出选项：默认全部包含
   const [includeBot, setIncludeBot] = useState(true)
   const [includeModel, setIncludeModel] = useState(true)
+  // S2：默认不含密钥（后端占位/置空）；勾选后导出明文密钥并附警示。
+  const [includeSecrets, setIncludeSecrets] = useState(false)
   const [exporting, setExporting] = useState(false)
 
   // 导入流程：选文件 → ConfirmModal 确认 → importConfig
@@ -31,8 +33,12 @@ export function DataTransferPage() {
     }
     setExporting(true)
     try {
-      await exportConfig({ include_bot: includeBot, include_model: includeModel })
-      toast.ok('配置已导出，浏览器开始下载')
+      await exportConfig({
+        include_bot: includeBot,
+        include_model: includeModel,
+        include_secrets: includeSecrets,
+      })
+      toast.ok(includeSecrets ? '配置已导出（含明文密钥，请妥善保管）' : '配置已导出，浏览器开始下载')
     } catch (err) {
       toast.err(err instanceof Error ? err.message : '导出失败')
     } finally {
@@ -88,7 +94,11 @@ export function DataTransferPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Toggle checked={includeBot} onChange={setIncludeBot} label="包含 bot_config（机器人配置）" />
               <Toggle checked={includeModel} onChange={setIncludeModel} label="包含 model_config（模型配置）" />
+              <Toggle checked={includeSecrets} onChange={setIncludeSecrets} label="包含密钥（明文 app_secret / api_key，默认不含）" />
             </div>
+            {includeSecrets ? (
+              <Banner kind="warn">导出文件将包含明文密钥，请妥善保管，勿经不可信渠道传输。不勾选时密钥导出为空，导入端会保留其已配置的旧密钥。</Banner>
+            ) : null}
             <div>
               <button
                 className="btn"

@@ -2,16 +2,26 @@
 package routers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 )
 
 // handleAuthVerify 对齐 POST /api/webui/auth/verify：验证 token（成功即认为
 // 已登录；Go 版鉴权通过 Authorization: Bearer 头携带，不再下发 Cookie）。
+// S1：挂登录限速（对齐 MaiBot src/webui/core/rate_limiter.py：300s 窗口内
+// 5 次失败封 600s；routes.py:184 即挂载在 verify 路由上）。
 func handleAuthVerify(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Auth == nil {
 			fail(w, http.StatusServiceUnavailable, "鉴权服务未启用")
+			return
+		}
+		limiter := d.LoginRateLimiter()
+		ip := clientIP(r)
+		if allowed, wait := limiter.Allowed(ip); !allowed {
+			fail(w, http.StatusTooManyRequests,
+				fmt.Sprintf("登录尝试过于频繁，账号已临时锁定，请 %d 秒后再试", int(wait.Seconds())+1))
 			return
 		}
 		var body struct {
@@ -21,11 +31,20 @@ func handleAuthVerify(d *Deps) http.HandlerFunc {
 			return
 		}
 		if !d.Auth.VerifyToken(body.Token) {
+			limiter.RecordFailure(ip)
+			// 失败本身可能触发封禁：此时直接 429（对齐 rate_limiter.py 的 ban 提示）。
+			if allowed, wait := limiter.Allowed(ip); !allowed {
+				fail(w, http.StatusTooManyRequests,
+					fmt.Sprintf("登录尝试过于频繁，账号已临时锁定，请 %d 秒后再试", int(wait.Seconds())+1))
+				return
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"valid": false, "message": "Token 无效或已过期",
 			})
 			return
 		}
+		// 登录成功清空该 IP 的失败窗口（对齐成功即重置语义）。
+		limiter.Reset(ip)
 		source := d.Auth.TokenSource()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"valid":                 true,

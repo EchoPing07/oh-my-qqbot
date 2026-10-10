@@ -86,11 +86,14 @@ func (i *MessageIngestor) RegisterMessage(sessionMessage *message.SessionMessage
 	i.runtime.RegisterMessage(sessionMessage)
 
 	stats := IngestionStats{
-		MessageID:        sessionMessage.MessageID,
-		IsAt:             sessionMessage.IsAt,
-		IsMentioned:      sessionMessage.IsMentioned,
-		ForcedTurnArmed:  sessionMessage.IsAt || sessionMessage.IsMentioned,
-		MessageCacheSize: i.runtime.PendingMessageCount() + len(i.runtime.PendingMessages()),
+		MessageID:       sessionMessage.MessageID,
+		IsAt:            sessionMessage.IsAt,
+		IsMentioned:     sessionMessage.IsMentioned,
+		ForcedTurnArmed: sessionMessage.IsAt || sessionMessage.IsMentioned,
+		// 顺带修复：此前 PendingMessageCount() + len(PendingMessages()) 把
+		// 未消费部分计了两遍；message_cache_size 的语义是缓存总条数
+		// （对齐 Python len(self.message_cache)）。
+		MessageCacheSize: i.runtime.MessageCacheSize(),
 		ReceivedAt:       receivedAt,
 	}
 	if hook := i.options.OnMessageIngested; hook != nil {

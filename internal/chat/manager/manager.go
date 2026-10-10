@@ -419,7 +419,18 @@ func (m *ChatManager) GetSessionName(sessionID string) string {
 		return *session.UserNickname + "的私聊"
 	}
 	if contextMessage != nil {
-		return contextMessage.MessageInfo.UserInfo.UserNickname + "的私聊"
+		nickname := strings.TrimSpace(contextMessage.MessageInfo.UserInfo.UserNickname)
+		if nickname != "" {
+			return nickname + "的私聊"
+		}
+	}
+	// T7 修复：昵称缺失时用 user_id 兜底，不再输出「的私聊」这种残缺名
+	// （对齐 DisplayName 的 cardname or nickname or id 兜底语义）。
+	if session.UserID != nil && strings.TrimSpace(*session.UserID) != "" {
+		return *session.UserID + "的私聊"
+	}
+	if contextMessage != nil && strings.TrimSpace(contextMessage.MessageInfo.UserInfo.UserID) != "" {
+		return contextMessage.MessageInfo.UserInfo.UserID + "的私聊"
 	}
 	return ""
 }

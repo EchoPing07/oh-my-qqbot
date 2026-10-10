@@ -102,6 +102,9 @@ type App struct {
 	stopChans []chan struct{}
 	shutdown  []func(context.Context) error
 	closeMu   sync.Mutex
+	// stopMu 保护 stopChans 的 append（消息管线 goroutine）与 Close 的遍历
+	// close（退出路径）之间的并发访问。
+	stopMu sync.Mutex
 }
 
 // New assembles the application skeleton without starting background work.
@@ -233,10 +236,12 @@ func (a *App) SetupPhase2(ctx context.Context) error {
 }
 
 // newRuntime builds a per-session runtime wired to the shared planner bridge.
-func (a *App) newRuntime(sessionID string) (*runtime.Runtime, error) {
+// isGroupSession 由 heartflow 层传入（来源 BotChatSession.IsGroupSession，
+// 对齐 Python runtime.chat_stream.is_group_session）；session_id 是 md5 hex
+// 串，无法从字符串判定群/私。
+func (a *App) newRuntime(sessionID string, isGroup bool) (*runtime.Runtime, error) {
 	global := a.Cfg.GetGlobalConfig()
 	rt := global.Chat.ReplyTiming
-	isGroup := !stringsHasSuffixPrivate(sessionID)
 	opts := runtime.Options{
 		SessionID:                           sessionID,
 		IsGroupSession:                      isGroup,
@@ -246,6 +251,8 @@ func (a *App) newRuntime(sessionID string) (*runtime.Runtime, error) {
 		EnableContextOptimization:           global.Chat.EnableContextOptimization,
 		MidTermMemory:                       global.Chat.MidTermMemory,
 		MidTermMemoryLength:                 global.Chat.MidTermMemoryLenth,
+		InevitableAtReply:                   &rt.InevitableAtReply,
+		MentionedBotReply:                   &rt.MentionedBotReply,
 		IsBotSelf: func(platform, userID string) bool {
 			return userID != "" && userID == global.Bot.QQAccount
 		},
@@ -254,6 +261,8 @@ func (a *App) newRuntime(sessionID string) (*runtime.Runtime, error) {
 		},
 	}
 	if isGroup {
+		// 群聊用 talk_value，私聊用 private_talk_value（对齐
+		// runtime._get_base_reply_frequency）。
 		opts.BaseReplyFrequency = rt.TalkValue
 	} else {
 		opts.BaseReplyFrequency = rt.PrivateTalkValue
@@ -268,7 +277,9 @@ func (a *App) newRuntime(sessionID string) (*runtime.Runtime, error) {
 	}
 
 	stop := make(chan struct{})
+	a.stopMu.Lock()
 	a.stopChans = append(a.stopChans, stop)
+	a.stopMu.Unlock()
 	rt2 := runtime.NewRuntime(opts)
 	rt2.SetPlanner(a.Planner().ForSession(sessionID))
 	rt2.Start(stop)
@@ -331,10 +342,12 @@ func (a *App) Close(ctx context.Context) {
 		_ = a.webui.Close()
 		a.webui = nil
 	}
+	a.stopMu.Lock()
 	for _, ch := range a.stopChans {
 		close(ch)
 	}
 	a.stopChans = nil
+	a.stopMu.Unlock()
 	if a.Channel != nil {
 		_ = a.Channel.Close()
 	}
@@ -460,13 +473,6 @@ func (a *App) ToolRegistryFlags() tools.FeatureFlags {
 		EnableReplyQuote:        true,
 		BotNickname:             g.Bot.Nickname,
 	}
-}
-
-func stringsHasSuffixPrivate(sessionID string) bool {
-	// session_id 无法直接判定群/私；以「最后一段为 private」判定。
-	// CalculateSessionID 对私聊生成 "..._<user_id>_private"。
-	const suffix = "_private"
-	return len(sessionID) > len(suffix) && sessionID[len(sessionID)-len(suffix):] == suffix
 }
 
 // groupIDOf returns the group id of a session message ("" for private chats).

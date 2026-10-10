@@ -83,6 +83,12 @@ type Options struct {
 	MaxInternalRounds int
 	// IdleBackoffConfig mirrors the `chat.reply_timing` backoff fields.
 	IdleBackoffConfig trigger.ReplyTimingBackoffConfig
+	// InevitableAtReply mirrors `chat.reply_timing.inevitable_at_reply`
+	//（runtime.py:1294，Python 默认 true）；nil 时按默认 true 处理。
+	InevitableAtReply *bool
+	// MentionedBotReply mirrors `chat.reply_timing.mentioned_bot_reply`
+	//（runtime.py:1295，Python 默认 false）；nil 时按默认 false 处理。
+	MentionedBotReply *bool
 	// FocusModeActive mirrors the focus-mode probe; nil means focus mode is off
 	// (the MaiBot default `experimental.focus_mode = false`).
 	FocusModeActive func() bool
@@ -130,6 +136,18 @@ func (o Options) maxInternalRounds() int {
 	return MaxInternalRounds
 }
 
+// inevitableAtReply mirrors `global_config.chat.reply_timing.inevitable_at_reply`
+// 的默认值语义（official_configs.py:545 默认 True；nil → true）。
+func (o Options) inevitableAtReply() bool {
+	return o.InevitableAtReply == nil || *o.InevitableAtReply
+}
+
+// mentionedBotReply mirrors `global_config.chat.reply_timing.mentioned_bot_reply`
+// 的默认值语义（official_configs.py:531 默认 False；nil → false）。
+func (o Options) mentionedBotReply() bool {
+	return o.MentionedBotReply != nil && *o.MentionedBotReply
+}
+
 // ---------------------------------------------------------------------------
 // runtime
 // ---------------------------------------------------------------------------
@@ -163,8 +181,13 @@ type Runtime struct {
 	pendingWaitStartedAt     *float64
 	pendingWaitSeconds       *float64
 
-	messageTurnScheduled    bool
-	deferredTurnDelay       *float64
+	messageTurnScheduled bool
+	deferredTurnDelay    *float64
+	// deferredTurnTimer 是 deferredTurnDelay 的定时触发器（P1-3 修复：对齐
+	// Python `_defer_message_turn_check` 的 asyncio.create_task——延迟睡够后
+	// 重跑 schedule_message_turn。Python 靠事件循环调度，Go 用 time.AfterFunc，
+	// 回调在独立 goroutine 执行，全部字段访问必须持 r.mu）。
+	deferredTurnTimer       *time.Timer
 	messageDebounceRequired bool
 
 	running                        bool
@@ -403,6 +426,14 @@ func (r *Runtime) PendingMessageCount() int {
 	return len(r.messageCache) - r.lastProcessedIndex
 }
 
+// MessageCacheSize 返回消息缓存总条数（监控用；区别于 PendingMessageCount
+// 的「未消费条数」口径）。
+func (r *Runtime) MessageCacheSize() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.messageCache)
+}
+
 // PendingMessages mirrors `runtime.message_cache[runtime._last_processed_index:]`.
 func (r *Runtime) PendingMessages() []*message.SessionMessage {
 	r.mu.Lock()
@@ -483,21 +514,38 @@ func (r *Runtime) enqueueTriggerLocked(triggerKind string) {
 	}
 }
 
-// EnqueueMessageTurn mirrors `_enqueue_message_turn`.
+// EnqueueMessageTurn mirrors `_enqueue_message_turn`（含
+// `_cancel_deferred_message_turn_task`：投递消息触发时取消待执行的延迟复查，
+// 并清空挂起延迟的观察值）。
 func (r *Runtime) EnqueueMessageTurn() {
 	r.mu.Lock()
+	r.cancelDeferredTurnTimerLocked()
 	r.deferredTurnDelay = nil
 	r.messageTurnScheduled = true
 	r.enqueueTriggerLocked(TriggerMessage)
 	r.mu.Unlock()
 }
 
-// DeferMessageTurnCheck mirrors `_defer_message_turn_check`.
+// DeferMessageTurnCheck mirrors `_defer_message_turn_check`: 记录延迟并起定时
+// 任务，睡够后重跑 schedule_message_turn（P1-3 修复，对齐 runtime.py:1249-1254）。
 func (r *Runtime) DeferMessageTurnCheck(delaySeconds float64) {
 	r.mu.Lock()
 	delay := delaySeconds
 	r.deferredTurnDelay = &delay
+	// 先取消旧定时任务再建新任务（对齐 `_defer_message_turn_check` 的
+	// cancel + create_task 语义，重复调度只保留最后一次）。
+	r.cancelDeferredTurnTimerLocked()
+	delaySecondsValue := delaySeconds
+	r.deferredTurnTimer = time.AfterFunc(time.Duration(delaySecondsValue*float64(time.Second)), r.FireDeferredTurnCheck)
 	r.mu.Unlock()
+}
+
+// cancelDeferredTurnTimerLocked 停掉待执行的延迟复查定时器（调用方须持 r.mu）。
+func (r *Runtime) cancelDeferredTurnTimerLocked() {
+	if r.deferredTurnTimer != nil {
+		r.deferredTurnTimer.Stop()
+		r.deferredTurnTimer = nil
+	}
 }
 
 // DeferredTurnDelay returns the delay of the pending deferred check (nil when
@@ -512,13 +560,16 @@ func (r *Runtime) DeferredTurnDelay() *float64 {
 	return &value
 }
 
-// FireDeferredTurnCheck mirrors `_schedule_deferred_message_turn`: it re-runs
-// the scheduler after the deferred delay elapsed.
+// FireDeferredTurnCheck mirrors `_schedule_deferred_message_turn`（runtime.py
+// :1269-1281）：延迟到期后清理挂起状态、检查运行态并重跑调度。
 func (r *Runtime) FireDeferredTurnCheck() {
 	r.mu.Lock()
+	r.cancelDeferredTurnTimerLocked()
 	r.deferredTurnDelay = nil
+	running := r.running
 	r.mu.Unlock()
-	if !r.IsRunning() {
+	if !running {
+		// 对齐 Python `if not self._running: return`。
 		return
 	}
 	r.ScheduleMessageTurn()
@@ -548,11 +599,13 @@ func (r *Runtime) ClearMessageDebounceRequired() {
 // IdleBackoff mirrors `runtime._idle_backoff`.
 func (r *Runtime) IdleBackoff() *trigger.IdleBackoffController { return r.backoff }
 
-// ChatHistory mirrors `runtime._chat_history`.
+// ChatHistory mirrors `runtime._chat_history`. T3 修复：返回副本——此前直接
+// 返回底层切片，调用方持引用迭代期间引擎并发 AppendChatHistory 会触发
+// reslice/扩容，读到半新半旧的数据；历史条目量级 ≤ 上下文上限，拷贝开销可接受。
 func (r *Runtime) ChatHistory() []chatcontext.LLMContextMessage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.chatHistory
+	return append([]chatcontext.LLMContextMessage{}, r.chatHistory...)
 }
 
 // SetChatHistory replaces the internal history (used by context restore and
@@ -649,12 +702,18 @@ func (r *Runtime) shouldContinueAfterFocusGate(sessionMessage *message.SessionMe
 	return false
 }
 
-// UpdateMessageTriggerState mirrors `_update_message_trigger_state`: the Go port
-// receives the @/mention flags already resolved by the channel layer, and only
-// maps them onto the forced-turn state.
+// UpdateMessageTriggerState mirrors `_update_message_trigger_state`（runtime.py
+// :1283-1296）: the Go port receives the @/mention flags already resolved by the
+// channel layer, and only maps them onto the forced-turn state. T4 修复：按配置
+// 门控——IsAt 受 inevitable_at_reply（默认 true）、IsMentioned 受
+// mentioned_bot_reply（默认 false），此前一律武装强制触发、忽略配置。
 func (r *Runtime) updateMessageTriggerState(sessionMessage *message.SessionMessage) {
-	shouldForceReply := sessionMessage.IsAt || sessionMessage.IsMentioned
-	if !shouldForceReply || (!sessionMessage.IsAt && !sessionMessage.IsMentioned) {
+	if !sessionMessage.IsAt && !sessionMessage.IsMentioned {
+		return
+	}
+	shouldForceReply := (sessionMessage.IsAt && r.options.inevitableAtReply()) ||
+		(sessionMessage.IsMentioned && r.options.mentionedBotReply())
+	if !shouldForceReply {
 		return
 	}
 	r.armForcedTurn(sessionMessage, sessionMessage.IsAt, sessionMessage.IsMentioned)
@@ -953,6 +1012,7 @@ func (r *Runtime) enterWaitState(seconds *float64, toolCallID string, logicalTur
 		r.pendingWaitSeconds = nil
 	}
 	r.messageTurnScheduled = false
+	r.cancelDeferredTurnTimerLocked()
 	r.deferredTurnDelay = nil
 	return nil
 }
@@ -1239,12 +1299,18 @@ func (r *Runtime) IsRunning() bool {
 func (r *Runtime) Stop() {
 	r.mu.Lock()
 	r.running = false
+	r.cancelDeferredTurnTimerLocked()
+	r.deferredTurnDelay = nil
 	select {
 	case r.turnNotify <- struct{}{}:
 	default:
 	}
 	r.mu.Unlock()
 	r.EnterStopState()
+	// T5：同步取消引擎作用域执行上下文——正在执行的 planner 请求 / 工具
+	// （reply 段间 sleep、渠道发送）立即收到取消信号，不必等循环回到
+	// NextTurnTrigger 才发现停止。
+	r.engine.cancelExecution()
 }
 
 // WaitForMessageQuietPeriod mirrors `_wait_for_message_quiet_period`.

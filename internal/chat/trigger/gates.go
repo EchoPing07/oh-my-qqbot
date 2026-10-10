@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"fmt"
+	"sync"
 
 	"oh-my-qqbot/internal/chat/context"
 	"oh-my-qqbot/internal/message"
@@ -44,7 +45,11 @@ type DynamicGateRuntime interface {
 }
 
 // DynamicReplyTurnGate mirrors gates.DynamicReplyTurnGate.
+//
+// T1 修复：roundIDs 是 Evaluate 可变状态，Evaluate 会从引擎与渠道两侧 goroutine
+// 并发进入（经由 MessageTurnScheduler），加 mutex 保护。
 type DynamicReplyTurnGate struct {
+	mu        sync.Mutex
 	runtime   DynamicGateRuntime
 	gate      *DynamicReplyGate
 	roundIDs  map[string]bool
@@ -99,6 +104,7 @@ func (g *DynamicReplyTurnGate) Evaluate(pendingMessages []*message.SessionMessag
 	}
 	if !g.runtime.IsGroupSession() {
 		// 拟合数据只覆盖群聊；私聊里每条消息都是对麦麦说的，不设门控
+		//（对齐 gates.py 的 `if not runtime.chat_stream.is_group_session` 分支）。
 		return TurnGateResult{Decision: TurnGateTrigger, Detail: "私聊不设动态门控 判定=进入Planner"}
 	}
 
@@ -109,6 +115,8 @@ func (g *DynamicReplyTurnGate) Evaluate(pendingMessages []*message.SessionMessag
 	}
 	if len(newMessageIDs) > 0 {
 		// 预计回复数按虚拟轮次计：只用本轮次内到达的消息估计，被门控拦下而积压的旧消息不重复计入
+		// T1：roundIDs 只在锁内读写。
+		g.mu.Lock()
 		if !g.gate.IsRoundOpen(now) {
 			g.roundIDs = map[string]bool{}
 		}
@@ -121,6 +129,7 @@ func (g *DynamicReplyTurnGate) Evaluate(pendingMessages []*message.SessionMessag
 				roundMessages = append(roundMessages, externalMessage)
 			}
 		}
+		g.mu.Unlock()
 		g.gate.RecordProactiveDemand(
 			EstimateReplyProbability(g.buildLikelihoodInput(roundMessages, now, externalMessages)),
 			now,
