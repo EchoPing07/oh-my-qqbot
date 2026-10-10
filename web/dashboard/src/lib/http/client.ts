@@ -12,7 +12,7 @@
  */
 import { formatApiError } from '@/lib/api-error'
 
-import { getBearerToken, onUnauthorized } from '@/lib/api-base'
+import { fireUnauthorized, getBearerToken, setStoredToken } from '@/lib/api-base'
 
 import { ApiError } from './errors'
 
@@ -96,9 +96,13 @@ function htmlRouteDiagnostic(url: string): string {
   return `接口返回了前端页面，未命中后端 API 路由；当前请求：${formatRequestUrl(url)}`
 }
 
-/** 默认 401 处理：广播 401（登录页/认证守卫可订阅；可在 createApiClient 里覆盖） */
+/** 默认 401 处理：清 token + 广播 401 + 跳转登录页（可被 createApiClient 覆盖） */
 function onUnauthorizedFallback(): void {
-  onUnauthorized(() => {})
+  setStoredToken('')
+  fireUnauthorized()
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth')) {
+    window.location.href = '/auth'
+  }
 }
 
 export function createApiClient(clientOptions: ApiClientOptions): ApiClient {

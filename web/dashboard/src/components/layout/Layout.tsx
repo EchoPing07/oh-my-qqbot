@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 
-import { BackgroundLayer } from '@/components/background-layer'
 import { BackToTop } from '@/components/back-to-top'
 import { HttpWarningBanner } from '@/components/http-warning-banner'
 import { SkipNav } from '@/components/ui/skip-nav'
@@ -11,7 +10,6 @@ import { useAnnounce } from '@/components/ui/announcer-context'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useTheme } from '@/components/use-theme'
 import { useAuthGuard } from '@/hooks/use-auth'
-import { useBackground } from '@/hooks/use-background'
 
 import { matchesShortcut } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
@@ -59,7 +57,7 @@ export function Layout({ children }: LayoutProps) {
   const workspaceForPath = (_path: string): WorkspaceMode => 'settings'
   const isLogsPath =
     pathname === '/logs' || pathname === '/statistics' || pathname.startsWith('/reasoning-process')
-  // 麦麦聊天已并入麦麦设置侧边栏，/chat 属于设置工作区
+  // 聊天页已并入设置侧边栏，/chat 属于设置工作区
   const workspaceMode: WorkspaceMode = isLogsPath ? 'logs' : workspaceForPath(pathname)
   const isSettingsWorkspace = workspaceMode !== 'logs'
   const showBackToTop =
@@ -84,8 +82,8 @@ export function Layout({ children }: LayoutProps) {
   const immersiveRestoreRef = useRef<{ sidebarOpen: boolean; topbarCollapsed: boolean } | null>(
     null
   )
-  const { theme, setTheme, themeConfig } = useTheme()
-  const effectiveSidebarOpen = themeConfig.dashboardStyle !== 'millennium' && sidebarOpen
+  const { theme, setTheme } = useTheme()
+  const effectiveSidebarOpen = sidebarOpen
   const builtInMenuSections = useMenuSections()
   const menuSections = useMemo(() => builtInMenuSections, [builtInMenuSections])
 
@@ -195,7 +193,6 @@ export function Layout({ children }: LayoutProps) {
   }
 
   const actualTheme = getActualTheme()
-  const { config: pageBg } = useBackground('page')
 
   const scheduleWorkspaceTransition = useCallback((callback: () => void, duration: number) => {
     workspaceTransitionTimerRef.current = window.setTimeout(() => {
@@ -278,11 +275,7 @@ export function Layout({ children }: LayoutProps) {
   // 去往日志工作区时侧栏只滑出、不收布局宽度：顶栏不跟着侧栏位移，切换完成后由日志槽位接管这段宽度。
   const sidebarKeepsWidth = sidebarExiting && workspaceTransitionTarget === 'logs'
   // 侧栏滑出/滑入期间顶栏延伸到侧栏下方，侧栏移开时露出的是完整的顶栏而不是页面底色。
-  // 千禧风格的铭牌与顶栏是同一条机壳上沿：顶栏常驻垫在侧栏下方，
-  // 否则非整数缩放下侧栏裁剪边缘的抗锯齿会在两段投影之间透出一条细缝。
-  const sidebarUnderlay =
-    isSettingsWorkspace &&
-    (themeConfig.dashboardStyle === 'millennium' || sidebarKeepsWidth || targetWorkspaceWaiting)
+  const sidebarUnderlay = isSettingsWorkspace && (sidebarKeepsWidth || targetWorkspaceWaiting)
   // 日志视图切换挂在顶栏里，不随页面容器移动；让它与页面同步退场/入场，避免突兀地出现或消失。
   const logSwitcherHidden =
     workspaceTransitionStage !== 'idle' && workspaceTransitionStage !== 'page-enter'
@@ -312,7 +305,6 @@ export function Layout({ children }: LayoutProps) {
         data-dashboard-shell="true"
         className="relative isolate flex h-[100dvh] overflow-hidden overscroll-none"
       >
-        <BackgroundLayer config={pageBg} layerId="page" />
         <div className="relative z-10 flex h-full min-h-0 w-full overflow-hidden">
           {/* Sidebar：离开设置工作区时向左收起，并同步释放布局宽度 */}
           {isSettingsWorkspace && (
@@ -423,7 +415,7 @@ export function Layout({ children }: LayoutProps) {
                   : isSettingsWorkspace
                     ? 'overflow-x-hidden overflow-y-auto overscroll-contain'
                     : 'overflow-hidden',
-                pageBg.type === 'none' ? 'bg-background' : 'bg-transparent'
+                'bg-background'
               )}
             >
               <motion.div

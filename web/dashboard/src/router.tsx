@@ -12,19 +12,22 @@ import { RoutePendingFallback } from './components/route-pending-fallback'
 import { checkAuth } from './hooks/use-auth'
 import { RouteErrorBoundary } from './components/error-boundary'
 
-// Root 路由
+// Root 路由：所有非公开路由（protected 分支）在进入前统一鉴权；
+// /auth 与 /setup 自行处理未认证态，不做根层跳转。
 const rootRoute = createRootRoute({
   component: Outlet,
   beforeLoad: ({ location }) => {
-    // 只在目标路由确实是首页时异步鉴权。使用 window.location 会读到导航前的旧路径，
-    // 并让离开首页的工作区切换无故进入 pending 状态。
-    if (location.pathname !== '/') {
+    const publicPaths = ['/auth', '/setup', '/chat/embed']
+    if (publicPaths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))) {
       return
     }
 
     return checkAuth().then((authenticated) => {
       if (!authenticated) {
-        throw redirect({ to: '/auth' })
+        throw redirect({
+          to: '/auth',
+          search: location.pathname !== '/' ? { redirect: location.pathname } : undefined,
+        })
       }
     })
   },
@@ -226,39 +229,7 @@ const settingsRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/settings/index.tsx'), 'SettingsPage'),
 })
 
-// 配置模板市场路由
-const packMarketRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/config/pack-market',
-  component: lazyRouteComponent(() => import('./routes/config/pack-market')),
-})
-
-// 配置模板详情路由
-export const packDetailRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/config/pack-market/$packId',
-  component: lazyRouteComponent(() => import('./routes/config/pack-detail')),
-})
-
-// 问卷调查路由 - WebUI 反馈
-const webuiFeedbackSurveyRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/survey/webui-feedback',
-  component: lazyRouteComponent(
-    () => import('./routes/survey/webui-feedback'),
-    'WebUIFeedbackSurveyPage'
-  ),
-})
-
-// 问卷调查路由 - 麦麦体验反馈
-const maibotFeedbackSurveyRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/survey/omb-feedback',
-  component: lazyRouteComponent(
-    () => import('./routes/survey/omb-feedback'),
-    'MaiBotFeedbackSurveyPage'
-  ),
-})
+// 问卷调查路由、配置模板市场路由已随 MaiBot 特色系统移除
 
 // 404 路由
 const notFoundRoute = createRoute({
@@ -293,10 +264,7 @@ const routeTree = rootRoute.addChildren([
     chatManagementRoute,
     chatRoute,
     settingsRoute,
-    packMarketRoute,
-    packDetailRoute,
-    webuiFeedbackSurveyRoute,
-    maibotFeedbackSurveyRoute,
+  // 问卷调查路由、配置模板市场路由已随 MaiBot 特色系统移除
   ]),
   notFoundRoute,
 ])

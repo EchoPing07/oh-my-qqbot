@@ -82,14 +82,18 @@ func handleAuthRegenerate(d *Deps) http.HandlerFunc {
 	}
 }
 
-// handleSetupStatus 对齐 GET /setup/status。
+// handleSetupStatus 对齐 GET /setup/status。允许匿名访问（Python 版
+// verify_token_optional 语义）：带有效 Bearer 时返回真实状态；未带/无效时
+// authenticated=false 但仍回传 setup 状态，登录页向导依赖此响应分流。
 func handleSetupStatus(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		authenticated := d.Auth != nil && d.Auth.VerifyToken(bearerToken(r))
 		source := d.Auth.TokenSource()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"is_first_setup":        d.Auth.IsFirstSetup(),
 			"token_source":          source,
 			"requires_custom_token": source == "temporary",
+			"authenticated":         authenticated,
 			"message":               "状态查询成功",
 		})
 	}

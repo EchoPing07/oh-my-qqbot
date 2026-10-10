@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import { Link } from '@tanstack/react-router'
 import { AlertCircle, ArrowRight, ExternalLink, Pencil, RefreshCw } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
-import { lazy, Suspense, useCallback, useContext, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
@@ -26,7 +26,6 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ThinkingIllustration } from '@/components/ui/thinking-illustration'
 import { RestartProvider, useRestart } from '@/lib/restart-context'
-import { ThemeProviderContext } from '@/lib/theme-context'
 import { openUpdateNotice } from '@/lib/update-notice-events'
 import { cn } from '@/lib/utils'
 import { APP_VERSION } from '@/lib/version'
@@ -322,25 +321,8 @@ function formatStorageBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
 }
 
-function compareVersions(left: string, right: string): number {
-  const parseVersion = (version: string): number[] => {
-    const match = version.replace(/^v/i, '').match(/^\d+(?:\.\d+)*/)
-    return (match?.[0] ?? '0').split('.').map((part) => Number.parseInt(part, 10))
-  }
-  const leftParts = parseVersion(left)
-  const rightParts = parseVersion(right)
-  const length = Math.max(leftParts.length, rightParts.length)
-
-  for (let index = 0; index < length; index += 1) {
-    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0)
-    if (difference !== 0) return difference
-  }
-  return 0
-}
-
 function IndexPageContent() {
   const { t } = useTranslation()
-  const { themeConfig } = useContext(ThemeProviderContext)
   const { triggerRestart, isRestarting } = useRestart()
 
   // 各数据源领域 hook（页面逻辑下沉，主文件退化为薄渲染层）
@@ -359,8 +341,6 @@ function IndexPageContent() {
     hitokoto,
     hitokotoLoading,
     hitokotoSettings,
-    maibotStableRelease,
-    versionCompatibility,
     fetchHitokoto,
     saveHitokotoSettings,
   } = useMaibotVersion()
@@ -394,7 +374,7 @@ function IndexPageContent() {
 
   // 初始加载各数据源
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- 挂载时拉取仪表盘各数据源 */
+    // 挂载时拉取仪表盘各数据源
     fetchDashboardData()
     fetchHitokoto()
     fetchBotStatus(true)
@@ -879,31 +859,14 @@ function IndexPageContent() {
         <div
           data-home-hitokoto="true"
           className={cn(
-            'bg-muted/20 flex h-full w-full items-center gap-3 rounded-lg px-4',
-            themeConfig.dashboardStyle !== 'future-retro' &&
-              'border-muted-foreground/30 border border-dashed'
+            'bg-muted/20 border-muted-foreground/30 flex h-full w-full items-center gap-3 rounded-lg border border-dashed px-4',
           )}
         >
           <div className="min-w-0 flex-1">
             {hitokotoLoading ? (
               <Skeleton className="h-5 w-full" />
             ) : hitokoto ? (
-              <p
-                className={cn(
-                  'text-muted-foreground truncate',
-                  themeConfig.dashboardStyle === 'future-retro'
-                    ? 'text-[1.05rem] font-medium tracking-wide'
-                    : 'text-sm italic'
-                )}
-                style={
-                  themeConfig.dashboardStyle === 'future-retro'
-                    ? {
-                        fontFamily: '"MaiRetroQuote", "Noto Serif SC", "SimSun", serif',
-                        textShadow: '0 0.035em 0 hsl(var(--background))',
-                      }
-                    : undefined
-                }
-              >
+              <p className="text-muted-foreground truncate text-sm italic">
                 "{hitokoto.hitokoto}"{hitokoto.from ? ` —— ${hitokoto.from}` : ''}
               </p>
             ) : null}
@@ -931,13 +894,6 @@ function IndexPageContent() {
     ...homeCards.filter((card) => card.id === hitokotoCardId),
     ...homeCards.filter((card) => !firstRowCardIds.includes(card.id) && card.id !== hitokotoCardId),
   ]
-  const maibotUpdateAvailable = Boolean(
-    botStatus?.version &&
-    maibotStableRelease &&
-    compareVersions(maibotStableRelease.version, botStatus.version) > 0
-  )
-  const versionsMismatch =
-    versionCompatibility?.status !== undefined && versionCompatibility.status !== 'compatible'
   return (
     <ScrollArea className="h-full" scrollbars="vertical">
       <div data-home-page="true" className="space-y-2 p-4 sm:space-y-4 sm:p-6">
@@ -962,10 +918,7 @@ function IndexPageContent() {
         )}
         <div
           data-home-command-strip="true"
-          className={cn(
-            'text-primary flex flex-wrap items-center gap-x-7 gap-y-2 font-sans font-black tracking-[0.12em] uppercase',
-            versionsMismatch && 'text-amber-600 dark:text-amber-400'
-          )}
+          className='text-primary flex flex-wrap items-center gap-x-7 gap-y-2 font-sans font-black tracking-[0.12em] uppercase'
         >
           <button
             type="button"
@@ -991,18 +944,6 @@ function IndexPageContent() {
             </span>
             <span className="text-base">V{APP_VERSION}</span>
           </button>
-          {maibotUpdateAvailable && maibotStableRelease && (
-            <a
-              href={maibotStableRelease.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-sky-600 hover:underline dark:text-sky-400"
-            >
-              {t('home.versionCard.updateAvailable')} V{maibotStableRelease.version}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          )}
-          {versionsMismatch && <span className="text-sm">{t('home.versionCard.mismatch')}</span>}
           <span
             aria-hidden="true"
             data-home-version-stripes="true"

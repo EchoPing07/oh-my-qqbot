@@ -1,23 +1,12 @@
 /**
- * useMaibotVersion —— 版本信息与一言领域 hook（页面逻辑下沉）。
+ * useHomeHitokoto —— 首页一言领域 hook（页面逻辑下沉）。
  *
- * 收编 index.tsx 两段走原生 fetch 的逻辑：
- * - GitHub 最新稳定版（maibotStableRelease，挂载时一次性拉取）
- * - 一言（hitokoto / hitokotoLoading + fetchHitokoto）
- *
- * 设计判断：
- * - 一言与 GitHub 版本都直接走 fetch（非后端 API），故合并为一个 hook，避免碎片化。
- * - fetchHitokoto 依赖 [t]，t 来自 useTranslation 为稳定引用，主 effect 不会反复重建。
+ * MaiBot 版本兼容检查与上游 GitHub release 拉取已随 MaiBot 特色系统移除，
+ * 本 hook 只保留一言（hitokoto / hitokotoLoading + fetchHitokoto）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  getVersionCompatibility,
-  type VersionCompatibilityResult,
-} from '@/lib/version-compatibility-api'
-
-import type { ReleaseStatus } from '../types'
 
 const HITOKOTO_SETTINGS_STORAGE_KEY = 'omb-home-hitokoto-settings-v1'
 const HITOKOTO_INDEX_STORAGE_KEY = 'omb-home-hitokoto-index-v1'
@@ -89,9 +78,6 @@ export function useMaibotVersion() {
   const [hitokoto, setHitokoto] = useState<{ hitokoto: string; from: string } | null>(null)
   const [hitokotoLoading, setHitokotoLoading] = useState(true)
   const [hitokotoSettings, setHitokotoSettings] = useState(loadHitokotoSettings)
-  const [maibotStableRelease, setMaibotStableRelease] = useState<ReleaseStatus | null>(null)
-  const [versionCompatibility, setVersionCompatibility] =
-    useState<VersionCompatibilityResult | null>(null)
   const hitokotoIndexRef = useRef(loadHitokotoIndex())
   const hitokotoSettingsRef = useRef(hitokotoSettings)
   const hitokotoRequestRef = useRef<AbortController | null>(null)
@@ -103,69 +89,6 @@ export function useMaibotVersion() {
     return () => {
       isMountedRef.current = false
       hitokotoRequestRef.current?.abort()
-    }
-  }, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-
-    const loadVersionCompatibility = async () => {
-      try {
-        const result = await getVersionCompatibility(controller.signal)
-        if (!controller.signal.aborted) {
-          setVersionCompatibility(result)
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          console.debug('检查版本匹配状态失败:', error)
-        }
-      }
-    }
-
-    void loadVersionCompatibility()
-    return () => controller.abort()
-  }, [])
-
-  // 挂载时拉取 GitHub 最新稳定版
-  useEffect(() => {
-    let mounted = true
-
-    const loadLatestVersions = async () => {
-      try {
-        const response = await fetch(
-          'https://api.github.com/repos/Mai-with-u/MaiBot/releases?per_page=20',
-          {
-            headers: { Accept: 'application/vnd.github+json' },
-          }
-        )
-        if (!response.ok) {
-          throw new Error(`GitHub release status ${response.status}`)
-        }
-        const releases = (await response.json()) as Array<{
-          draft?: boolean
-          prerelease?: boolean
-          tag_name?: string
-          html_url?: string
-        }>
-        const visibleReleases = releases.filter((release) => !release.draft)
-        const stableRelease = visibleReleases.find((release) => !release.prerelease)
-        if (mounted) {
-          if (stableRelease?.tag_name) {
-            setMaibotStableRelease({
-              version: String(stableRelease.tag_name).replace(/^v/i, '').trim(),
-              url: stableRelease.html_url || 'https://github.com/Mai-with-u/MaiBot/releases',
-            })
-          }
-        }
-      } catch (error) {
-        console.debug('检查 MaiBot 最新版本失败:', error)
-      }
-    }
-
-    void loadLatestVersions()
-
-    return () => {
-      mounted = false
     }
   }, [])
 
@@ -261,8 +184,6 @@ export function useMaibotVersion() {
     hitokoto,
     hitokotoLoading,
     hitokotoSettings,
-    maibotStableRelease,
-    versionCompatibility,
     fetchHitokoto,
     saveHitokotoSettings,
   }

@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { ThemeProviderContext } from '@/lib/theme-context'
 import { getBotConfig, updateBotConfigSection } from '@/lib/config-api'
-import { buildFutureRetroTexture } from '@/lib/theme/future-retro'
-import { DEFAULT_DASHBOARD_STYLE, DEFAULT_FUTURE_RETRO_STYLE_CONFIG } from '@/lib/theme/tokens'
+import { DEFAULT_DASHBOARD_STYLE } from '@/lib/theme/tokens'
 import type { DashboardStyle, UserThemeConfig } from '@/lib/theme/tokens'
 import {
   THEME_STORAGE_KEYS,
@@ -13,11 +12,6 @@ import {
   saveThemePartial,
 } from '@/lib/theme/storage'
 import { applyThemePipeline, removeCustomCSS } from '@/lib/theme/pipeline'
-import {
-  applyMillenniumFonts,
-  loadMillenniumCjkFont,
-  loadMillenniumFont,
-} from '@/lib/theme/millennium-font'
 
 type Theme = 'dark' | 'light' | 'system'
 
@@ -29,21 +23,20 @@ type ThemeProviderProps = {
 
 type WebUIStyleConfigValue = 0 | 1 | 2
 
-// bot_config 的 webui.webui_style 用整数保存界面风格：0 原版、1 未来复古、2 千禧。
+// bot_config 的 webui.webui_style 用整数保存界面风格：0 黑白灰线条风。
+// 1/2 是历史值（未来复古/千禧），读取时归一化为 0。
 const DASHBOARD_STYLE_CONFIG_VALUES: Record<DashboardStyle, WebUIStyleConfigValue> = {
   modern: 0,
-  'future-retro': 1,
-  millennium: 2,
 }
 
 function dashboardStyleToConfigValue(style: DashboardStyle): WebUIStyleConfigValue {
-  return DASHBOARD_STYLE_CONFIG_VALUES[style]
+  return DASHBOARD_STYLE_CONFIG_VALUES[style] ?? 0
 }
 
 function configValueToDashboardStyle(value: unknown): DashboardStyle {
-  const configValue = Number(value)
-  if (configValue === 2) return 'millennium'
-  return configValue === 1 ? 'future-retro' : 'modern'
+  // 单一风格：任何历史值都归一化为 modern。
+  void value
+  return DEFAULT_DASHBOARD_STYLE
 }
 
 function shouldSyncRemoteWebUIStyle(): boolean {
@@ -60,7 +53,7 @@ export function ThemeProvider({
   })
   const [themeConfig, setThemeConfig] = useState<UserThemeConfig>(() => loadThemeConfig())
   const [systemThemeTick, setSystemThemeTick] = useState(0)
-  const pendingWebUIStyleRef = useRef<WebUIStyleConfigValue | null>(null)
+  const [remoteStyleLoaded, setRemoteStyleLoaded] = useState(false)
 
   const resolvedTheme = useMemo<'dark' | 'light'>(() => {
     void systemThemeTick
@@ -76,114 +69,58 @@ export function ThemeProvider({
       }
     }
     mediaQuery.addEventListener('change', handleChange)
-    return () => mediaQuery.removeEventListener('change', handleChange)
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange)
+    }
   }, [themeMode])
 
   useEffect(() => {
     const root = document.documentElement
     root.classList.remove('light', 'dark')
     root.classList.add(resolvedTheme)
+    root.dataset.dashboardStyle = DEFAULT_DASHBOARD_STYLE
 
-    const isDark = resolvedTheme === 'dark'
-    const dashboardStyle = themeConfig.dashboardStyle ?? DEFAULT_DASHBOARD_STYLE
-    const futureRetroConfig = {
-      ...DEFAULT_FUTURE_RETRO_STYLE_CONFIG,
-      ...themeConfig.styleConfig?.futureRetro,
-    }
-
-    root.dataset.dashboardStyle = dashboardStyle
-    applyMillenniumFonts(loadMillenniumFont(), loadMillenniumCjkFont())
-    root.dataset.retroTextureStyle = futureRetroConfig.textureStyle
-    root.style.setProperty('--retro-paper-warmth', `${futureRetroConfig.paperWarmth}%`)
-    root.style.setProperty('--retro-panel-depth', String(futureRetroConfig.panelDepth / 100))
-    root.style.setProperty(
-      '--retro-configured-paper-texture',
-      buildFutureRetroTexture(
-        futureRetroConfig.textureStyle,
-        futureRetroConfig.textureIntensity,
-        isDark
-      )
-    )
-    const textureSize = {
-      fine: '220px 220px',
-      coarse: '260px 260px',
-      'dot-grid': '24px 24px',
-      ruled: '40px 28px',
-      none: 'auto',
-    }[futureRetroConfig.textureStyle]
-    root.style.setProperty('--retro-paper-texture-size', textureSize)
-
-    applyThemePipeline(themeConfig, isDark)
+    applyThemePipeline(themeConfig, resolvedTheme === 'dark')
   }, [resolvedTheme, themeConfig])
 
-  const applyRemoteWebUIStyle = useCallback((styleValue: unknown) => {
-    const nextDashboardStyle = configValueToDashboardStyle(styleValue)
-
-    setThemeConfig((prev) => {
-      if (prev.dashboardStyle === nextDashboardStyle) {
-        return prev
-      }
-
-      saveThemePartial({ dashboardStyle: nextDashboardStyle })
-      return { ...prev, dashboardStyle: nextDashboardStyle }
-    })
-  }, [])
-
-  const loadRemoteWebUIStyle = useCallback(async () => {
-    if (!shouldSyncRemoteWebUIStyle() || pendingWebUIStyleRef.current !== null) {
+  // 后端 webui_style 只作历史值归一化，不再驱动本地风格切换。
+  useEffect(() => {
+    if (remoteStyleLoaded || !shouldSyncRemoteWebUIStyle()) {
       return
     }
-
-    try {
-      const result = await getBotConfig()
-      const webuiConfig = result.webui as Record<string, unknown> | undefined
-      if (!webuiConfig || !('webui_style' in webuiConfig)) {
-        return
+    let cancelled = false
+    void (async () => {
+      try {
+        const result = await getBotConfig()
+        if (cancelled) return
+        const webuiConfig = result.webui as Record<string, unknown> | undefined
+        if (webuiConfig && 'webui_style' in webuiConfig) {
+          setThemeConfig((prev) => ({
+            ...prev,
+            dashboardStyle: configValueToDashboardStyle(webuiConfig.webui_style),
+          }))
+        }
+      } catch (error) {
+        console.debug('同步 WebUI 风格配置失败:', error)
+      } finally {
+        if (!cancelled) setRemoteStyleLoaded(true)
       }
-
-      applyRemoteWebUIStyle(webuiConfig.webui_style)
-    } catch (error) {
-      console.debug('同步 WebUI 风格配置失败:', error)
+    })()
+    return () => {
+      cancelled = true
     }
-  }, [applyRemoteWebUIStyle])
+  }, [remoteStyleLoaded])
 
-  const persistRemoteWebUIStyle = useCallback(async (style: DashboardStyle) => {
+  const persistRemoteWebUIStyle = useCallback(async (_style: DashboardStyle) => {
     if (!shouldSyncRemoteWebUIStyle()) {
       return
     }
-
-    const webuiStyle = dashboardStyleToConfigValue(style)
-    pendingWebUIStyleRef.current = webuiStyle
-
     try {
-      await updateBotConfigSection('webui', { webui_style: webuiStyle })
+      await updateBotConfigSection('webui', { webui_style: dashboardStyleToConfigValue(_style) })
     } catch (error) {
       console.warn('保存 WebUI 风格配置失败:', error)
-    } finally {
-      pendingWebUIStyleRef.current = null
     }
   }, [])
-
-  useEffect(() => {
-    void loadRemoteWebUIStyle()
-
-    const handleFocus = () => {
-      void loadRemoteWebUIStyle()
-    }
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        void loadRemoteWebUIStyle()
-      }
-    }
-
-    window.addEventListener('focus', handleFocus)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      window.removeEventListener('focus', handleFocus)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [loadRemoteWebUIStyle])
 
   const setTheme = useCallback((mode: Theme) => {
     localStorage.setItem(THEME_STORAGE_KEYS.MODE, mode)

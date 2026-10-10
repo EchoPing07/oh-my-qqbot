@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+# oh-my-qqbot (OpenRC service for Alpine Linux)
+
+name="oh-my-qqbot"
+description="oh-my-qqbot — Go rewrite of MaiBot"
+command="/opt/oh-my-qqbot/oh-my-qqbot"
+command_args="--root /opt/oh-my-qqbot ${OMQ_EXTRA_ARGS:---headless}"
+directory="/opt/oh-my-qqbot"
+command_background="yes"
+pidfile="/run/oh-my-qqbot.pid"
+output_log="/opt/oh-my-qqbot/logs/stdout.log"
+error_log="/opt/oh-my-qqbot/logs/stderr.log"
+
+depend() {
+	need net
+	after net.firewall
+}
+
+start_pre() {
+	checkpath -d -m 0700 /opt/oh-my-qqbot/logs /opt/oh-my-qqbot/data
+	checkpath -d -m 0755 /opt/oh-my-qqbot/config /opt/oh-my-qqbot/prompts
+}

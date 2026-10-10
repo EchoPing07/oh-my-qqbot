@@ -3,7 +3,6 @@ import {
   BookOpen,
   Check,
   ChevronLeft,
-  ChevronsUp,
   FileText,
   Globe,
   LogOut,
@@ -20,7 +19,6 @@ import {
   lazy,
   Suspense,
   type ComponentType,
-  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -28,7 +26,6 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { BackgroundLayer } from '@/components/background-layer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -42,9 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toggleThemeWithTransition } from '@/components/use-theme'
-import { useBackground } from '@/hooks/use-background'
 import { logout } from '@/lib/auth'
-import { ThemeProviderContext } from '@/lib/theme-context'
 import { cn } from '@/lib/utils'
 
 import type { WorkspaceMode } from './types'
@@ -114,12 +109,9 @@ export function Header({
 }: HeaderProps) {
   const { t, i18n: i18nInstance } = useTranslation()
   const workspaceTabs = WORKSPACE_TABS.map((tab) => ({ ...tab, literal: false }))
-  const { themeConfig } = useContext(ThemeProviderContext)
-  // 千禧风格的顶栏要放得下键帽，比其它风格高一截；高度由动画驱动，所以在这里按风格取值。
-  const expandedTopbarHeight = themeConfig.dashboardStyle === 'millennium' ? 70 : 42
+  const expandedTopbarHeight = 42
   const currentLang = i18nInstance.language || 'zh'
-  const { config: headerBg, inheritedFrom } = useBackground('header')
-  const inheritsPageBackground = inheritedFrom === 'page'
+  const inheritsPageBackground = false
   const [searchQuery, setSearchQuery] = useState('')
   const [aiSearchRequestId, setAISearchRequestId] = useState(0)
   const [workspaceTabsCompact, setWorkspaceTabsCompact] = useState(false)
@@ -132,11 +124,7 @@ export function Header({
   // 桌面端侧栏当前占据的布局宽度（px）；小屏侧栏不占布局，探针不显示，取 0。
   const [sidebarInset, setSidebarInset] = useState(0)
   const sidebarInsetProbeRef = useRef<HTMLSpanElement | null>(null)
-  const [topbarRowGap, setTopbarRowGap] = useState(0)
-  // 只有千禧顶栏的日志槽位参与正常布局，其它风格是绝对定位，不需要让位。
-  // 槽位自身会多带一段行间距，让位宽度里要扣掉，工作区键才正好停在原位。
-  const logSwitcherInset =
-    themeConfig.dashboardStyle === 'millennium' ? Math.max(0, sidebarInset - topbarRowGap) : 0
+  const logSwitcherInset = 0
   const workspaceTabsCompactRef = useRef(false)
   const workspaceHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const headerActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -154,8 +142,6 @@ export function Header({
     setSidebarInset(probe.offsetWidth)
     const resizeObserver = new ResizeObserver(() => {
       setSidebarInset(probe.offsetWidth)
-      const row = document.getElementById('log-viewer-topbar-tabs')?.parentElement
-      setTopbarRowGap(row ? parseFloat(window.getComputedStyle(row).columnGap) || 0 : 0)
     })
     resizeObserver.observe(probe)
     return () => resizeObserver.disconnect()
@@ -180,7 +166,7 @@ export function Header({
 
 
   useEffect(() => {
-    if (workspaceMode !== 'logs' || themeConfig.dashboardStyle === 'millennium') {
+    if (workspaceMode !== 'logs') {
       const resetFrameId = requestAnimationFrame(() => setWorkspaceTabsCompact(false))
       return () => cancelAnimationFrame(resetFrameId)
     }
@@ -241,7 +227,7 @@ export function Header({
       window.removeEventListener('resize', updateCompactState)
       resizeObserver.disconnect()
     }
-  }, [workspaceMode, themeConfig.dashboardStyle])
+  }, [workspaceMode])
 
   const handleLogout = async () => {
     await logout()
@@ -299,7 +285,7 @@ export function Header({
       className={cn(
         'sticky top-0 isolate z-30 min-w-0 overflow-visible',
         topbarCollapsed ? 'h-4' : 'flex h-[42px] flex-col border-b px-3 backdrop-blur-md sm:px-4',
-        topbarCollapsed || inheritsPageBackground ? 'bg-transparent' : 'bg-background'
+        topbarCollapsed || inheritsPageBackground ? 'bg-background' : 'bg-background'
       )}
     >
       <span
@@ -317,10 +303,9 @@ export function Header({
           data-dashboard-header-strip="true"
           className={cn(
             'relative z-30 flex h-4 min-w-0 items-center justify-end px-3 backdrop-blur-md sm:px-15',
-            inheritsPageBackground ? 'bg-transparent' : 'bg-background'
+            inheritsPageBackground ? 'bg-background' : 'bg-background'
           )}
         >
-          {!inheritsPageBackground && <BackgroundLayer config={headerBg} layerId="header" />}
           {sidebarOpen && (
             <button
               type="button"
@@ -356,13 +341,9 @@ export function Header({
         </div>
       )}
 
-      {!topbarCollapsed && !inheritsPageBackground && (
-        <BackgroundLayer config={headerBg} layerId="header" />
-      )}
       <div className={cn(topbarCollapsed ? 'hidden' : 'contents')}>
         <div className="relative z-10 flex h-full min-h-0 items-center justify-between gap-2">
-          {/* 千禧风格下此槽位占据实际布局宽度：宽度从 0 展开，把工作区键平滑推开而不是瞬间挤开。
-              隐藏态左侧留出侧栏宽度，工作区键停在设置工作区时的位置，入场/退场只做一次单向移动。 */}
+          {/* 日志工作区切换槽位：隐藏态左侧留出侧栏宽度，工作区键停在设置工作区时的位置，入场/退场只做一次单向移动。 */}
           <motion.div
             id="log-viewer-topbar-tabs"
             className={cn(
@@ -554,7 +535,7 @@ export function Header({
                 }}
                 className={cn(
                   'relative ml-2 flex min-w-0 flex-1 items-center sm:ml-3 sm:max-w-72',
-                  workspaceMode === 'logs' && themeConfig.dashboardStyle !== 'millennium'
+                  workspaceMode === 'logs'
                     ? 'mr-auto sm:mr-0 sm:w-48 sm:flex-none'
                     : 'mr-auto'
                 )}
@@ -701,24 +682,6 @@ export function Header({
                 <Moon className="h-5 w-5" />
               )}
             </Button>
-
-            {/* 千禧风格用一颗键帽收起顶栏，取代顶栏下沿的滑条 */}
-            {themeConfig.dashboardStyle === 'millennium' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onTopbarToggle}
-                title={t('header.collapseTopbar')}
-                aria-label={t('header.collapseTopbar')}
-                aria-expanded={!topbarCollapsed}
-                data-dashboard-header-action="true"
-                data-dashboard-topbar-collapse-key="true"
-                data-header-action-highlighted="false"
-                className="relative isolate hidden border-0 bg-transparent shadow-none sm:inline-flex"
-              >
-                <ChevronsUp className="h-5 w-5" />
-              </Button>
-            )}
 
             {/* 分隔线 */}
             <div className="bg-border hidden h-6 w-px sm:block" />

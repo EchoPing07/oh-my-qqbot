@@ -371,7 +371,7 @@ export function UpdateNoticeDialog() {
             )}
             {!manualTarget && (
               <DialogDescription>
-                查看本次 MaiBot 更新包含的功能与修复。
+                查看本次主程序更新包含的功能与修复。
               </DialogDescription>
             )}
           </DialogHeader>
@@ -504,8 +504,8 @@ export function UpdateNoticeDialog() {
             <DialogTitle>插件兼容性提醒</DialogTitle>
             <DialogDescription>
               {incompatiblePlugins.length > 0
-                ? `以下插件在 MaiBot 更新到 v${notice?.current_version ?? '—'} 后不再兼容，请更新插件或暂时停用。`
-                : `已完成 MaiBot v${notice?.current_version ?? '—'} 的插件兼容性检查。`}
+                ? `以下插件在主程序更新到 v${notice?.current_version ?? '—'} 后不再兼容，请更新插件或暂时停用。`
+                : `已完成主程序 v${notice?.current_version ?? '—'} 的插件兼容性检查。`}
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="max-h-[min(65vh,36rem)]">
@@ -534,7 +534,7 @@ export function UpdateNoticeDialog() {
                       </Badge>
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {plugin.plugin_id} · 支持 MaiBot v{plugin.host_min_version} - v{plugin.host_max_version}
+                      {plugin.plugin_id} · 支持主程序 v{plugin.host_min_version} - v{plugin.host_max_version}
                     </p>
                   </div>
                 )

@@ -17,7 +17,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Maximize2, Pencil, Plus, RotateCcw, X } from 'lucide-react'
-import { useCallback, useContext, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -32,7 +32,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { ThemeProviderContext } from '@/lib/theme-context'
 import { cn } from '@/lib/utils'
 
 type PluginHomeCardWidth = 'small' | 'medium' | 'large' | 'wide' | 'full'
@@ -44,7 +43,6 @@ const HOME_CARD_HIGH_ROW_HEIGHT = 360
 const HOME_CARD_GRID_GAP = 16
 const HOME_CARD_SEPARATOR_ROW_HEIGHT = 34
 // 千禧风格的分隔条是「模块 + 屏幕 + 键帽」，比一行文字的分隔条高。
-const HOME_CARD_MILLENNIUM_SEPARATOR_ROW_HEIGHT = 70
 const LEGACY_BUILTIN_CARD_ORDERS = [
   [
     'builtin:version',
@@ -488,11 +486,7 @@ function SortableHomeCard({
 
 export function HomeCardManager({ cards, controlsPortalId }: HomeCardManagerProps) {
   const { t } = useTranslation()
-  const { themeConfig } = useContext(ThemeProviderContext)
-  const separatorRowHeight =
-    themeConfig.dashboardStyle === 'millennium'
-      ? HOME_CARD_MILLENNIUM_SEPARATOR_ROW_HEIGHT
-      : HOME_CARD_SEPARATOR_ROW_HEIGHT
+  const separatorRowHeight = HOME_CARD_SEPARATOR_ROW_HEIGHT
   const [layout, setLayout] = useState<HomeCardLayout>(loadHomeCardLayout)
   const [editing, setEditing] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)

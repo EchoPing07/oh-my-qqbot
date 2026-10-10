@@ -4,40 +4,23 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 
 import './index.css'
-import './styles/millennium.css'
 import './i18n'
 import { AnnouncerProvider } from './components/ui/announcer'
-import { AssetStoreProvider } from './components/asset-provider'
-import { AnimationProvider } from './components/animation-provider'
 import { ThemeProvider } from './components/theme-provider'
-import { TourProvider } from './components/tour/tour-provider'
-import { LazyTourRenderer } from './components/tour/lazy-tour-renderer'
 import { ErrorBoundary } from './components/error-boundary'
-import { installMillenniumIconStyle } from './components/ui/millennium-icon-set'
 import { Toaster } from './components/ui/toaster'
-import { VersionCompatibilityDialog } from './components/version-compatibility-dialog'
 import { queryClient } from './lib/query'
 import { router } from './router'
-
-installMillenniumIconStyle()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AnnouncerProvider>
-          <AssetStoreProvider>
-            <ThemeProvider defaultTheme="system">
-              <VersionCompatibilityDialog />
-              <AnimationProvider>
-                <TourProvider>
-                  <RouterProvider router={router} />
-                  <LazyTourRenderer />
-                  <Toaster />
-                </TourProvider>
-              </AnimationProvider>
-            </ThemeProvider>
-          </AssetStoreProvider>
+          <ThemeProvider defaultTheme="system">
+            <RouterProvider router={router} />
+            <Toaster />
+          </ThemeProvider>
         </AnnouncerProvider>
       </QueryClientProvider>
     </ErrorBoundary>

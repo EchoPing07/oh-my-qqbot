@@ -8,19 +8,10 @@ import {
   HelpCircle,
   Key,
   Lock,
-  Moon,
-  Sun,
   Terminal,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -29,7 +20,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useTheme } from '@/components/use-theme'
 
 import { checkAuthStatus, getSetupStatus } from '@/lib/auth'
 import { setStoredToken } from '@/lib/api-base'
@@ -37,53 +27,14 @@ import { authApi } from '@/lib/http'
 import { cn } from '@/lib/utils'
 import { APP_FULL_NAME } from '@/lib/version'
 
-function createGearPath(teeth: number, outerRadius: number, rootRadius: number) {
-  const toothAngle = (Math.PI * 2) / teeth
-  const points = Array.from({ length: teeth }, (_, index) => {
-    const centerAngle = index * toothAngle - Math.PI / 2
-    const rootHalfWidth = toothAngle * 0.5
-    const topHalfWidth = toothAngle * 0.22
-
-    return [
-      { angle: centerAngle - rootHalfWidth, radius: rootRadius },
-      { angle: centerAngle - topHalfWidth, radius: outerRadius },
-      { angle: centerAngle + topHalfWidth, radius: outerRadius },
-      { angle: centerAngle + rootHalfWidth, radius: rootRadius },
-    ]
-  }).flat().map(({ angle, radius }) => ({
-    x: 50 + Math.cos(angle) * radius,
-    y: 50 + Math.sin(angle) * radius,
-  }))
-
-  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ') + ' Z'
-}
-
-const AUTH_GEAR_PATH = createGearPath(28, 48, 38)
-
-function AuthRetroGears() {
-  return (
-    <div className="auth-retro-gears" aria-hidden="true">
-      <svg className="auth-retro-gear auth-retro-gear--primary" viewBox="0 0 100 100" focusable="false">
-        <path className="auth-retro-gear__body" d={AUTH_GEAR_PATH} />
-        <circle className="auth-retro-gear__ring" cx="50" cy="50" r="31" />
-        <circle className="auth-retro-gear__ring auth-retro-gear__ring--inner" cx="50" cy="50" r="13" />
-        <circle className="auth-retro-gear__cutout" cx="50" cy="50" r="8" />
-      </svg>
-      <svg className="auth-retro-gear auth-retro-gear--secondary" viewBox="0 0 100 100" focusable="false">
-        <path className="auth-retro-gear__body" d={AUTH_GEAR_PATH} />
-        <circle className="auth-retro-gear__ring" cx="50" cy="50" r="29" />
-        <circle className="auth-retro-gear__ring auth-retro-gear__ring--inner" cx="50" cy="50" r="12" />
-        <circle className="auth-retro-gear__cutout" cx="50" cy="50" r="7" />
-      </svg>
-    </div>
-  )
-}
-
 function resolvePostAuthTarget(): '/' | '/chat/embed' {
   if (typeof window === 'undefined') return '/'
-  return new URLSearchParams(window.location.search).get('redirect') === '/chat/embed'
-    ? '/chat/embed'
-    : '/'
+  const redirect = new URLSearchParams(window.location.search).get('redirect')
+  // 仅允许回跳站内路径，防开放重定向；外部 URL 一律回首页。
+  if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+    return redirect === '/chat/embed' ? '/chat/embed' : '/'
+  }
+  return '/'
 }
 
 export function AuthPage() {
@@ -93,8 +44,6 @@ export function AuthPage() {
   const [checkingAuth, setCheckingAuth] = useState(true)
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { theme, setTheme, themeConfig } = useTheme()
-  const showRetroGears = themeConfig.dashboardStyle === 'future-retro'
   // 避免 React StrictMode 下重复触发 URL token 自动登录。
   const urlTokenHandledRef = useRef(false)
   const tokenAutofocusedRef = useRef(false)
@@ -148,22 +97,6 @@ export function AuthPage() {
       // 忽略 URL 解析异常
     }
   }, [])
-
-  // 获取实际应用的主题（处理 system 情况）
-  const getActualTheme = () => {
-    if (theme === 'system') {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    }
-    return theme
-  }
-
-  const actualTheme = getActualTheme()
-
-  // 主题切换（无动画）
-  const toggleTheme = () => {
-    const newTheme = actualTheme === 'dark' ? 'light' : 'dark'
-    setTheme(newTheme)
-  }
 
   const verifyToken = useCallback(
     async (rawToken: string): Promise<boolean> => {
@@ -265,50 +198,80 @@ export function AuthPage() {
   // 正在检查认证状态时显示加载
   if (checkingAuth) {
     return (
-      <div data-auth-page="true" className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
-        {showRetroGears && <AuthRetroGears />}
+      <div data-auth-page="true" className="bg-background flex min-h-screen items-center justify-center p-4">
         <div className="text-muted-foreground">{t('auth.checkingAuth')}</div>
       </div>
     )
   }
 
   return (
-    <div data-auth-page="true" className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
-      {showRetroGears && <AuthRetroGears />}
+    <div
+      data-auth-page="true"
+      className="bg-background relative flex min-h-screen items-center justify-center p-4"
+    >
+      {/* 背景装饰：细网格线 + 右下红色角标（线条风） */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            'linear-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / 0.5) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 75%)',
+          WebkitMaskImage:
+            'radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 75%)',
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="border-primary absolute right-0 bottom-0 h-16 w-16 border-t border-l"
+      />
 
-      {/* 认证卡片 - 磨砂玻璃效果 */}
-      <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-xl bg-card/80 border-border/50">
-        {/* 主题切换按钮 */}
-        <button
-          type="button"
-          data-auth-theme-toggle="true"
-          onClick={toggleTheme}
-          className="absolute right-4 top-4 rounded-lg p-2 hover:bg-accent transition-colors z-10 text-foreground"
-          title={actualTheme === 'dark' ? t('auth.switchToLight') : t('auth.switchToDark')}
-        >
-          {actualTheme === 'dark' ? (
-            <Sun className="h-5 w-5" strokeWidth={2.5} fill="none" />
-          ) : (
-            <Moon className="h-5 w-5" strokeWidth={2.5} fill="none" />
-          )}
-        </button>
+      {/* 登录卡片 - 平面线条风 */}
+      <div className="bg-card relative z-10 w-full max-w-md border shadow-sm">
+        {/* 顶部红色标记条 */}
+        <div className="bg-primary h-0.5 w-full" aria-hidden="true" />
 
-        <CardHeader className="pr-16 text-left">
-          <div className="space-y-2">
-            <CardTitle className="text-2xl font-bold">{t('auth.welcome')}</CardTitle>
-            <CardDescription className="flex items-center gap-2 text-base">
-              <span aria-hidden="true" className="font-mono text-primary">&gt;</span>
-              {t('auth.accessDesc')}
-            </CardDescription>
+        <div className="space-y-1 px-6 pt-6 pb-2 text-left">
+          <div className="mb-4 flex items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="bg-foreground relative flex h-9 w-9 items-center justify-center"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+                <path
+                  d="M5 18V6l7 7 7-7v12"
+                  stroke="hsl(var(--background))"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="bg-primary absolute -right-0.5 -bottom-0.5 h-1.5 w-1.5" />
+            </span>
+            <span className="text-foreground text-base font-bold tracking-tight">
+              oh-my-qqbot
+            </span>
           </div>
-        </CardHeader>
+          <h1 className="text-foreground text-2xl font-bold">{t('auth.welcome')}</h1>
+          <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
+            <span aria-hidden="true" className="text-primary font-mono">
+              &gt;
+            </span>
+            {t('auth.accessDesc')}
+          </p>
+        </div>
 
-        <CardContent>
+        <div className="px-6 pb-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Token 输入框 */}
             <div className="space-y-2">
               <div className="relative">
-                <Key className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={2} fill="none" />
+                <Key
+                  className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+                  strokeWidth={2}
+                  fill="none"
+                />
                 <Input
                   id="token"
                   aria-label="Access Token"
@@ -316,7 +279,7 @@ export function AuthPage() {
                   placeholder={t('auth.tokenPlaceholder')}
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
-                  className={cn('pl-10', error && 'border-red-500 focus-visible:ring-red-500')}
+                  className={cn('pl-10', error && 'border-destructive focus-visible:ring-destructive')}
                   disabled={isValidating}
                   ref={(element) => {
                     if (element && !tokenAutofocusedRef.current) {
@@ -333,8 +296,12 @@ export function AuthPage() {
 
             {/* 错误提示 */}
             {error && (
-              <div id="token-error" role="alert" className="flex items-center gap-2 rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/50 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" strokeWidth={2} fill="none" />
+              <div
+                id="token-error"
+                role="alert"
+                className="text-destructive bg-destructive/10 border-destructive/30 flex items-center gap-2 border p-3 text-sm"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2} fill="none" />
                 <span>{error}</span>
               </div>
             )}
@@ -354,7 +321,7 @@ export function AuthPage() {
             {/* 帮助文本 */}
             <Dialog>
               <DialogTrigger asChild>
-                <button className="flex w-full items-center justify-start gap-1 text-left text-[11px] text-primary transition-colors underline-offset-4 hover:text-primary/80 hover:underline">
+                <button className="text-primary hover:text-primary/80 flex w-full items-center justify-start gap-1 text-left text-[11px] transition-colors underline-offset-4 hover:underline">
                   <HelpCircle className="h-3 w-3" strokeWidth={2} fill="none" />
                   {t('auth.helpLink')}
                 </button>
@@ -362,22 +329,24 @@ export function AuthPage() {
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    <Lock className="h-5 w-5 text-primary" strokeWidth={2} fill="none" />
+                    <Lock className="text-primary h-5 w-5" strokeWidth={2} fill="none" />
                     {t('auth.helpTitle')}
                   </DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-4">
                   {/* 方式一：查看控制台 */}
-                  <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+                  <div className="bg-muted/50 space-y-2 border p-4">
                     <div className="flex items-start gap-3">
-                      <Terminal className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" strokeWidth={2} fill="none" />
+                      <Terminal
+                        className="text-primary mt-0.5 h-5 w-5 shrink-0"
+                        strokeWidth={2}
+                        fill="none"
+                      />
                       <div className="flex-1 space-y-2">
-                        <h4 className="font-semibold text-sm">{t('auth.method1Title')}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {t('auth.method1Desc')}
-                        </p>
-                        <div className="rounded bg-background p-2 font-mono text-xs">
+                        <h4 className="text-sm font-semibold">{t('auth.method1Title')}</h4>
+                        <p className="text-muted-foreground text-sm">{t('auth.method1Desc')}</p>
+                        <div className="bg-background font-mono text-xs p-2">
                           <p className="text-muted-foreground">{t('auth.method1Example1')}</p>
                           <p className="text-muted-foreground">{t('auth.method1Example2')}</p>
                         </div>
@@ -386,27 +355,30 @@ export function AuthPage() {
                   </div>
 
                   {/* 方式二：查看配置文件 */}
-                  <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+                  <div className="bg-muted/50 space-y-2 border p-4">
                     <div className="flex items-start gap-3">
-                      <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" strokeWidth={2} fill="none" />
+                      <FileText
+                        className="text-primary mt-0.5 h-5 w-5 shrink-0"
+                        strokeWidth={2}
+                        fill="none"
+                      />
                       <div className="flex-1 space-y-2">
-                        <h4 className="font-semibold text-sm">{t('auth.method2Title')}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {t('auth.method2Desc')}
-                        </p>
-                        <div className="rounded bg-background p-2 font-mono text-xs break-all">
+                        <h4 className="text-sm font-semibold">{t('auth.method2Title')}</h4>
+                        <p className="text-muted-foreground text-sm">{t('auth.method2Desc')}</p>
+                        <div className="bg-background font-mono text-xs break-all p-2">
                           <code className="text-primary">data/webui.json</code>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {t('auth.method2FileHint')} <code className="px-1 py-0.5 bg-background rounded">access_token</code>
+                        <p className="text-muted-foreground text-xs">
+                          {t('auth.method2FileHint')}{' '}
+                          <code className="bg-background px-1 py-0.5">access_token</code>
                         </p>
                       </div>
                     </div>
                   </div>
 
                   {/* 安全提示 */}
-                  <div className="text-xs text-muted-foreground">
-                    <ul className="list-disc list-inside space-y-1">
+                  <div className="text-muted-foreground text-xs">
+                    <ul className="list-inside list-disc space-y-1">
                       <li>{t('auth.securityTip1')}</li>
                       <li>{t('auth.securityTip2')}</li>
                     </ul>
@@ -414,13 +386,12 @@ export function AuthPage() {
                 </div>
               </DialogContent>
             </Dialog>
-
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* 页脚信息 */}
-      <div className="absolute bottom-4 left-0 right-0 z-10 text-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground absolute right-0 bottom-4 left-0 z-10 text-center text-xs">
         <p>{APP_FULL_NAME}</p>
       </div>
     </div>

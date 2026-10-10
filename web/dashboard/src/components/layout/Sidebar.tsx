@@ -2,10 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { BackgroundLayer } from '@/components/background-layer'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useTheme } from '@/components/use-theme'
-import { useBackground } from '@/hooks/use-background'
 import { cn } from '@/lib/utils'
 
 import { LogoArea } from './LogoArea'
@@ -33,11 +30,8 @@ export function Sidebar({
   onMobileMenuClose,
   onSidebarFix,
 }: SidebarProps) {
-  const { t, i18n } = useTranslation()
-  const { themeConfig } = useTheme()
-  const isMillennium = themeConfig.dashboardStyle === 'millennium'
-  const { config: sidebarBg, inheritedFrom } = useBackground('sidebar')
-  const inheritsPageBackground = inheritedFrom === 'page'
+  const { t } = useTranslation()
+  void topbarCollapsed
   const builtInMenuSections = useMenuSections()
   const menuSections = suppliedMenuSections ?? builtInMenuSections
   const [hoverExpanded, setHoverExpanded] = useState(false)
@@ -45,8 +39,8 @@ export function Sidebar({
   const [collapseTransitionActive, setCollapseTransitionActive] = useState(false)
   const hoverExpandTimerRef = useRef<number | null>(null)
   const collapseTransitionTimerRef = useRef<number | null>(null)
-  const sidebarRevealed = !isMillennium && (sidebarOpen || hoverExpanded || fixTransitionActive)
-  const visuallyOpen = sidebarRevealed || (!isMillennium && collapseTransitionActive)
+  const sidebarRevealed = sidebarOpen || hoverExpanded || fixTransitionActive
+  const visuallyOpen = sidebarRevealed || collapseTransitionActive
 
   const cancelHoverExpand = useCallback(() => {
     if (hoverExpandTimerRef.current !== null) {
@@ -69,7 +63,7 @@ export function Sidebar({
   }
 
   useEffect(() => {
-    if (sidebarOpen || isMillennium) {
+    if (sidebarOpen) {
       cancelHoverExpand()
       cancelCollapseTransition()
     }
@@ -77,19 +71,18 @@ export function Sidebar({
       cancelHoverExpand()
       cancelCollapseTransition()
     }
-  }, [cancelCollapseTransition, cancelHoverExpand, isMillennium, sidebarOpen])
+  }, [cancelCollapseTransition, cancelHoverExpand, sidebarOpen])
 
   return (
     <aside
       data-dashboard-sidebar="true"
-      data-dashboard-sidebar-topbar-collapsed={isMillennium && topbarCollapsed ? 'true' : undefined}
       data-dashboard-sidebar-hover-expanded={hoverExpanded ? 'true' : undefined}
       data-dashboard-sidebar-mobile-open={mobileMenuOpen ? 'true' : 'false'}
       data-dashboard-sidebar-mode={sidebarOpen ? 'fixed' : 'hover'}
       data-dashboard-sidebar-fix-transition={fixTransitionActive ? 'true' : undefined}
       data-dashboard-sidebar-visually-open={visuallyOpen ? 'true' : 'false'}
       onPointerEnter={(event) => {
-        if (!isMillennium && !sidebarOpen && event.pointerType === 'mouse') {
+        if (!sidebarOpen && event.pointerType === 'mouse') {
           cancelHoverExpand()
           cancelCollapseTransition()
           setCollapseTransitionActive(false)
@@ -112,8 +105,7 @@ export function Sidebar({
         setHoverExpanded(false)
       }}
       className={cn(
-        'fixed inset-y-0 left-0 isolate z-50 flex flex-col border-r transition-transform duration-300 motion-reduce:transition-none lg:relative lg:z-0 lg:h-full lg:w-[var(--layout-sidebar-width)] lg:transition-[clip-path] lg:duration-[220ms] lg:ease-[cubic-bezier(0.22,1,0.36,1)] lg:will-change-[clip-path]',
-        inheritsPageBackground ? 'bg-transparent' : 'bg-card',
+        'fixed inset-y-0 left-0 isolate z-50 flex flex-col border-r bg-card transition-transform duration-300 motion-reduce:transition-none lg:relative lg:z-0 lg:h-full lg:w-[var(--layout-sidebar-width)] lg:transition-[clip-path] lg:duration-[220ms] lg:ease-[cubic-bezier(0.22,1,0.36,1)] lg:will-change-[clip-path]',
         // 桌面端始终保持完整内容宽度，仅用裁剪展示折叠状态，避免悬浮时反复触发布局计算。
         'w-[var(--layout-sidebar-width)]',
         sidebarRevealed
@@ -122,8 +114,6 @@ export function Sidebar({
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}
     >
-      {!inheritsPageBackground && <BackgroundLayer config={sidebarBg} layerId="sidebar" />}
-
       {!visuallyOpen && (
         <div
           aria-hidden="true"
@@ -135,7 +125,7 @@ export function Sidebar({
       {/* Logo 区域 */}
       <div className="relative z-10">
         <LogoArea sidebarOpen={sidebarRevealed} />
-        {!isMillennium && !sidebarOpen && hoverExpanded && (
+        {!sidebarOpen && hoverExpanded && (
           <button
             type="button"
             data-dashboard-sidebar-fix-switch="true"
@@ -178,32 +168,22 @@ export function Sidebar({
           >
             {menuSections.map((section, sectionIndex) => (
               <li key={section.title}>
-                {/* 块标题 - 移动端始终可见，千禧桌面端以小字常驻，其它风格根据 sidebarOpen 切换 */}
+                {/* 块标题 - 移动端始终可见，桌面端根据 sidebarOpen 切换 */}
                 <div
                   className={cn(
                     'h-[var(--layout-sidebar-section-title-height)] px-[var(--layout-sidebar-nav-item-padding-x)]',
-                    isMillennium && 'lg:h-auto lg:px-0 lg:text-center',
                     section.title === 'sidebar.groups.overview' && 'hidden',
                     // 移动端始终显示，桌面端根据状态切换
                     'mb-[var(--layout-sidebar-section-title-margin-bottom)]',
                     'transition-opacity duration-[220ms] motion-reduce:transition-none',
-                    !isMillennium && !sidebarRevealed && 'lg:opacity-0',
-                    !isMillennium &&
-                      !sidebarRevealed &&
+                    !sidebarRevealed && 'lg:opacity-0',
+                    !sidebarRevealed &&
                       'lg:mb-[var(--layout-sidebar-section-title-margin-bottom-collapsed)]'
                   )}
                 >
                   <h3
                     data-dashboard-sidebar-section-title="true"
-                    data-dashboard-sidebar-title-stacked={
-                      isMillennium && (i18n.resolvedLanguage || i18n.language).startsWith('zh')
-                        ? 'true'
-                        : undefined
-                    }
-                    className={cn(
-                      'text-muted-foreground/60 text-sm font-semibold tracking-wider whitespace-nowrap uppercase',
-                      isMillennium && 'lg:break-words lg:whitespace-normal lg:normal-case'
-                    )}
+                    className="text-muted-foreground/60 text-sm font-semibold tracking-wider whitespace-nowrap uppercase"
                   >
                     {section.literalTitle ? section.title : t(section.title)}
                   </h3>
@@ -228,7 +208,7 @@ export function Sidebar({
                       key={item.path}
                       item={item}
                       sidebarOpen={sidebarRevealed}
-                      expandOnHover={isMillennium}
+                      expandOnHover={false}
                       onMobileMenuClose={onMobileMenuClose}
                     />
                   ))}

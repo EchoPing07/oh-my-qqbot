@@ -810,7 +810,7 @@ export function ExpressionReviewer({
 
   const renderListHeaderDescription = () => {
     const description =
-      '审核麦麦学习到的表达方式。通过人工审核的项目才会被使用（可在配置中调整），不通过的项目会被直接删除。'
+      '审核机器人学习到的表达方式。通过人工审核的项目才会被使用（可在配置中调整），不通过的项目会被直接删除。'
     if (embedded) {
       return null
     }

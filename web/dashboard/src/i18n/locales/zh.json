@@ -9,9 +9,9 @@
     "toggleConnection": "切换后端连接",
     "viewAnnualSummary": "查看年度总结",
     "annualSummary": "2025 年度总结",
-    "searchPlaceholder": "问麦麦你想知道的一切",
-    "viewDocs": "查看麦麦文档",
-    "docs": "麦麦文档",
+    "searchPlaceholder": "搜索配置、页面与功能",
+    "viewDocs": "查看使用文档",
+    "docs": "使用文档",
     "switchToLight": "切换到浅色模式",
     "switchToDark": "切换到深色模式",
     "logout": "登出系统",
@@ -46,14 +46,14 @@
       "replyEffects": "回复效果",
       "logViewer": "日志查看器",
       "reasoningProcess": "推理过程",
-      "maisakaMonitor": "麦麦观察",
+      "maisakaMonitor": "运行观察",
       "localChat": "本地聊天室",
       "settings": "WEBUI设置"
     }
   },
   "statisticsPage": {
     "title": "详细统计数据",
-    "description": "查看麦麦运行期间的模型调用、Token、费用、消息与在线时长。",
+    "description": "查看机器人运行期间的模型调用、Token、费用、消息与在线时长。",
     "generatedAt": "统计截止时间：{{time}}",
     "periodRange": "统计时段：{{start}} 至 {{end}}",
     "empty": "当前统计时段暂无数据",
@@ -165,13 +165,13 @@
     }
   },
   "workspace": {
-    "switcherLabel": "切换麦麦工作区",
-    "settings": "麦麦",
-    "chat": "麦麦聊天",
+    "switcherLabel": "切换工作区",
+    "settings": "机器人",
+    "chat": "聊天",
     "logs": "日志"
   },
   "chat": {
-    "botNameFallback": "麦麦",
+    "botNameFallback": "Bot",
     "userFallback": "用户",
     "userNameFallback": "人类",
     "virtualGroupFallback": "WebUI虚拟群聊",
@@ -230,12 +230,12 @@
       "conversations": "聊天会话",
       "emptyPreview": "暂无消息",
       "identityHint": "本地聊天室身份",
-      "myChats": "与麦麦聊天",
+      "myChats": "与机器人聊天",
       "noSearchResults": "没有匹配的会话",
       "newVirtual": "新建虚拟身份对话",
       "observedAvatarAlt": "{{name}} 的头像",
       "observedBadge": "观察",
-      "observedChats": "麦麦的聊天流",
+      "observedChats": "机器人的聊天流",
       "openSettings": "打开 {{name}} 的聊天设置",
       "online": "在线",
       "searchPlaceholder": "搜索聊天流…",
@@ -253,9 +253,9 @@
     },
     "dialog": {
       "create": "创建对话",
-      "description": "选择一个麦麦已认识的用户，以该用户的身份与麦麦对话。麦麦将使用她对该用户的记忆和认知来回应。",
+      "description": "选择一个机器人已认识的用户，以该用户的身份与机器人对话。机器人将使用其对该用户的记忆和认知来回应。",
       "groupName": "虚拟群名（可选）",
-      "groupNameHint": "麦麦会认为这是一个名为此名称的群聊",
+      "groupNameHint": "机器人会认为这是一个名为此名称的群聊",
       "knownUserSuffix": " · 已认识",
       "loading": "加载中...",
       "noUsers": "没有找到用户",
@@ -286,7 +286,7 @@
     },
     "toast": {
       "avatarSaved": "头像已保存",
-      "avatarSavedDesc": "新头像已经应用到麦麦聊天。",
+      "avatarSavedDesc": "新头像已应用到聊天。",
       "avatarSaveFailed": "头像保存失败",
       "avatarSaveFailedDesc": "请稍后重试。",
       "avatarUnsupported": "无法使用此头像",
@@ -321,7 +321,7 @@
     }
   },
   "layout": {
-    "verifyingLogin": "麦麦正在啃食服务器...",
+    "verifyingLogin": "正在验证登录...",
     "logoTitle": "MaiBot WebUI",
     "logoTitleShort": "M"
   },
@@ -608,7 +608,7 @@
       "openSourceLicense": "开源许可",
       "openSourceDesc": "本项目在 GitHub 开源，欢迎 Star ⭐ 支持！",
       "visitGitHub": "前往 GitHub",
-      "appDesc": "麦麦（MaiBot）的现代化 Web 管理界面",
+      "appDesc": "oh-my-qqbot 的现代化 Web 管理界面",
       "maimaiCore": "MaiBot 核心",
       "uiFrameworkGroup": "UI 框架与组件",
       "routingStateGroup": "路由与状态管理",
@@ -792,7 +792,7 @@
         "platform": {
           "label": "平台 *",
           "placeholder": "请选择平台",
-          "description": "选择麦麦Bot运行的平台",
+          "description": "选择机器人运行的平台",
           "options": {
             "custom": "其他平台"
           }
@@ -804,7 +804,7 @@
         "qqAccount": {
           "label": "QQ账号 *",
           "placeholder": "请输入机器人的 QQ 账号",
-          "description": "运行麦麦Bot的 QQ 账号"
+          "description": "运行机器人的 QQ 账号"
         },
         "primaryAccount": {
           "label": "账号 ID *",
@@ -814,7 +814,7 @@
         "nickname": {
           "label": "昵称 *",
           "placeholder": "请输入机器人的昵称",
-          "description": "麦麦Bot的名称"
+          "description": "机器人的名称"
         },
         "alias": {
           "label": "别名",
@@ -838,7 +838,7 @@
         "multipleReplyStyle": {
           "label": "备用表达风格",
           "placeholder": "每行输入一种备用表达风格",
-          "description": "当列表不为空时，麦麦会按概率从这些风格中随机注入一次性表达提示"
+          "description": "当列表不为空时，机器人会按概率从这些风格中随机注入一次性表达提示"
         },
         "multipleProbability": {
           "label": "临时风格注入概率",
@@ -962,9 +962,9 @@
   "restart": {
     "preparing": "准备重启",
     "preparingDesc": "正在发送重启请求...",
-    "preparingTip": "正在准备重启麦麦...",
-    "restarting": "正在重启麦麦",
-    "restartingDesc": "请稍候，麦麦正在重启中...",
+    "preparingTip": "正在准备重启机器人...",
+    "restarting": "正在重启机器人",
+    "restartingDesc": "请稍候，机器人正在重启中...",
     "restartingTip": "配置已保存，正在重启主程序...",
     "checking": "检查服务状态",
     "checkingDesc": "等待服务恢复... ({{current}}/{{max}})",
@@ -999,7 +999,7 @@
     "close": "关闭",
     "aiSearch": "AI 搜索",
     "aiSearching": "AI 理解中",
-    "aiHint": "可以描述你想调整的效果，例如“麦麦说话太频繁”",
+    "aiHint": "可以描述你想调整的效果，例如「机器人说话太频繁」",
     "progressTitle": "搜索过程",
     "progressExpand": "展开搜索过程",
     "progressCollapse": "收起搜索过程",
@@ -1037,18 +1037,18 @@
     "items": {
       "home": "首页",
       "homeDesc": "查看仪表板概览",
-      "botConfig": "麦麦设置",
-      "botConfigDesc": "配置麦麦的详细设置和共享组",
-      "model": "麦麦模型配置",
+      "botConfig": "机器人设置",
+      "botConfigDesc": "配置机器人的详细设置和共享组",
+      "model": "模型配置",
       "modelDesc": "配置模型参数",
       "emoji": "表情包",
-      "emojiDesc": "管理麦麦的表情包",
+      "emojiDesc": "管理机器人的表情包",
       "expression": "表达方式",
-      "expressionDesc": "管理麦麦的表达方式",
+      "expressionDesc": "管理机器人的表达方式",
       "person": "人物信息管理",
       "personDesc": "管理人物信息",
       "jargon": "黑话",
-      "jargonDesc": "管理麦麦学习到的黑话和俚语",
+      "jargonDesc": "管理机器人学习到的黑话和俚语",
       "behaviorLearningDesc": "浏览行为经验路径和检索命中",
       "statistics": "统计信息",
       "statisticsDesc": "查看使用统计",
@@ -1325,7 +1325,7 @@
       }
     },
     "botStatus": {
-      "title": "麦麦状态",
+      "title": "机器人状态",
       "loading": "读取中",
       "running": "活动",
       "stopped": "已停止",
@@ -1346,8 +1346,8 @@
       "showStatus": "返回活动状态"
     },
     "versionCard": {
-      "title": "麦麦版本",
-      "maibotVersion": "MAIBOT",
+      "title": "主程序版本",
+      "maibotVersion": "主程序",
       "consoleVersion": "CONSOLE",
       "updateAvailable": "UPDATE",
       "mismatch": "版本不匹配",
@@ -1359,17 +1359,17 @@
     },
     "platformGuide": {
       "title": "添加平台账号",
-      "description": "还没有配置麦麦用于连接消息平台的账号。",
-      "detail": "配置平台和账号后，麦麦才能接入 QQ 等消息软件收发消息。",
+      "description": "还没有配置机器人用于连接消息平台的账号。",
+      "detail": "配置平台和账号后，机器人才能接入 QQ 等消息软件收发消息。",
       "action": "去添加平台账号"
     },
     "quickActions": {
       "title": "快速操作",
-      "restart": "重启麦麦",
+      "restart": "重启机器人",
       "restarting": "重启中...",
       "expressionReview": "表达审核",
       "viewLogs": "查看日志",
-      "chat": "麦麦聊聊",
+      "chat": "打开聊天",
       "docs": "前往文档",
       "replyerLogs": "回复日志",
       "plannerLogs": "规划日志",
@@ -1390,11 +1390,11 @@
       "empty": "还没有选择快捷入口",
       "add": "添加入口",
       "descriptions": {
-        "restart": "重启麦麦主程序",
+        "restart": "重启机器人主程序",
         "expressionReview": "打开表达学习审核弹窗",
         "viewLogs": "查看 WebUI 日志",
-        "chat": "打开麦麦聊天",
-        "docs": "打开麦麦使用文档",
+        "chat": "打开聊天",
+        "docs": "打开使用文档",
         "replyerLogs": "查看回复阶段的推理记录",
         "plannerLogs": "查看规划阶段的推理记录",
         "reasoningLogs": "打开推理日志",
@@ -1407,10 +1407,10 @@
         "modelProviders": "打开模型管理 / 模型厂商设置",
         "modelList": "打开模型管理 / 模型列表",
         "modelTasks": "打开模型管理 / 为模型分配功能",
-        "botConfig": "打开麦麦主程序配置",
+        "botConfig": "打开机器人主程序配置",
         "emojiManagement": "打开表情包资源管理",
         "expressionManagement": "打开表达方式管理",
-        "statistics": "打开 maibot_statistics.html"
+        "statistics": "打开统计页面"
       },
       "categories": {
         "system": "系统",
@@ -1431,9 +1431,9 @@
     },
     "survey": {
       "title": "反馈问卷",
-      "description": "帮助我们改进麦麦体验",
+      "description": "帮助我们改进产品体验",
       "webui": "WebUI 反馈",
-      "maibot": "麦麦反馈"
+      "maibot": "反馈"
     },
     "stats": {
       "overviewTitle": "统计概览",

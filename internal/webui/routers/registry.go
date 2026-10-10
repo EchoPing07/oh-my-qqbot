@@ -21,7 +21,10 @@ func Register(mux *http.ServeMux, d *Deps) {
 	mux.HandleFunc("GET /api/webui/auth/check", handleAuthCheck(d))
 	mux.HandleFunc("POST /api/webui/auth/update", requireAuth(d, handleAuthUpdate(d)))
 	mux.HandleFunc("POST /api/webui/auth/regenerate", requireAuth(d, handleAuthRegenerate(d)))
-	mux.HandleFunc("GET /api/webui/setup/status", requireAuth(d, handleSetupStatus(d)))
+	// 对齐 Python 版 verify_token_optional：setup/status 允许匿名访问并自校验
+	// token（未认证时 requires_custom_token/is_first_setup 仍返回真实状态），
+	// 供登录页/向导在无 Bearer 头时探测。auth/verify 保持无鉴权（本身即登录）。
+	mux.HandleFunc("GET /api/webui/setup/status", handleSetupStatus(d))
 	mux.HandleFunc("POST /api/webui/setup/complete", requireAuth(d, handleSetupComplete(d)))
 	mux.HandleFunc("POST /api/webui/setup/reset", requireAuth(d, handleSetupReset(d)))
 	mux.HandleFunc("GET /api/webui/ws-token", handleWSToken(d))

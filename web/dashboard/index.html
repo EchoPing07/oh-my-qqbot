@@ -8,22 +8,20 @@
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
     <meta name="googlebot" content="noindex, nofollow" />
     <meta name="bingbot" content="noindex, nofollow" />
-    <link rel="icon" type="image/x-icon" href="/maimai.ico" />
+    <link rel="icon" type="image/x-icon" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>oh-my-qqbot Dashboard</title>
+    <title>oh-my-qqbot 控制台</title>
     <script>
       (function() {
-        const mode = localStorage.getItem('omb-theme-mode') 
+        const mode = localStorage.getItem('omb-theme-mode')
           || localStorage.getItem('ui-theme')
           || localStorage.getItem('omb-ui-theme');
         const theme = mode === 'system' || !mode 
           ? window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
           : mode;
         document.documentElement.classList.add(theme);
-
-        const dashboardStyle = localStorage.getItem('omb-theme-dashboard-style');
-        document.documentElement.dataset.dashboardStyle =
-          dashboardStyle === 'modern' ? 'modern' : 'future-retro';
+        // 单一风格（黑白灰线条风）：历史 dashboard-style 值一律归一化。
+        document.documentElement.dataset.dashboardStyle = 'modern';
       })();
     </script>
   </head>
