@@ -65,6 +65,12 @@
 - 依赖：P8 路由定型。验收：`npm install && npm run build` 通过，dist 产物存在。
 - 注意：这是 Node 工程，子代理同样限 CodeBuddy 三模型。
 
+### P10b 前端视觉重写（M14 后追加，已完成）
+- 用户裁定不采用 MaiBot 视觉风格，重写为**主黑白灰、辅红、线条风**（规范见 `docs/FRONTEND_STYLE_SPEC.md`）。
+- 登录链路修复：`GET /api/webui/setup/status` 对齐 Python 版 `verify_token_optional`（匿名可访问自校验）；前端 `getSetupStatus` 携带 Bearer、401 回退匿名；全部受保护路由统一鉴权守卫；401 统一清 token 跳登录。
+- 设计基座重写：index.css token、theme pipeline（单一风格归一化）、Layout/LogoArea/auth 页；移除 tour/survey/背景图层/版本兼容/配置市场/spectrum/orbit 等 MaiBot 特色系统；favicon 与品牌文案全量去 MaiBot 化。
+- 页面集群清理以 4 个并行子代理完成（glm-5.3-flash / deepseek-v4.1-flash / hy4-preview-f），验收 `tsc` 0 错误、`eslint src` 0 error、`npm run build` 通过。
+
 ### P11 打磨（M15）
 - reply_effect（回复后随访评审实验系统）、数据导出导入、news 数据源配置化拉取、统计聚合、知识图谱页只读数据接口、README（GPLv3 兼容声明 + 衍生来源 + 主动额度提示）。
 - 依赖：P5-P8。验收：相应单测 + build。
