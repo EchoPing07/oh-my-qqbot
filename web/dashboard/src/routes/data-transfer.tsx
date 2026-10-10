@@ -146,7 +146,7 @@ export function DataTransferPage() {
         include_logs: exportIncludeLogs,
       })
       setExportJob(job)
-      toast({ title: '已开始导出 MaiBot 数据' })
+      toast({ title: '已开始导出机器人数据' })
     } catch (error) {
       toast({
         title: '创建导出任务失败',
@@ -210,7 +210,7 @@ export function DataTransferPage() {
       )
       const job = await getDataTransferJob(response.job_id)
       setImportJob(job)
-      toast({ title: '已开始导入 MaiBot 数据' })
+      toast({ title: '已开始导入机器人数据' })
     } catch (error) {
       toast({
         title: '创建导入任务失败',
@@ -229,7 +229,7 @@ export function DataTransferPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Archive className="h-5 w-5" />
-              MaiBot 数据导入导出
+              机器人数据导入导出
             </CardTitle>
             <CardDescription>config 与 data 默认包含，插件和日志可按需选择</CardDescription>
           </CardHeader>
@@ -383,7 +383,7 @@ export function DataTransferPage() {
                   <div>
                     <h2 className="font-medium">导入数据</h2>
                     <p className="text-muted-foreground mt-1 text-sm">
-                      支持由本功能导出的 MaiBot 数据包
+                      支持由本功能导出的机器人数据包
                     </p>
                   </div>
                   <Button

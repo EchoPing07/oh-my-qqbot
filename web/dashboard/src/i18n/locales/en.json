@@ -46,7 +46,7 @@
       "replyEffects": "Reply Effects",
       "logViewer": "Log Viewer",
       "reasoningProcess": "Reasoning Process",
-      "maisakaMonitor": "MaiSaka Chat Monitor",
+      "maisakaMonitor": "Runtime Monitor",
       "localChat": "Local Chat",
       "settings": "WebUI Settings"
     }
@@ -1291,10 +1291,6 @@
         "default": {
           "title": "Default",
           "description": "Use the standard card appearance of the current theme."
-        },
-        "orange": {
-          "title": "Orange background",
-          "description": "Use the theme orange as the background and the page background color for text."
         },
         "borderless": {
           "title": "Borderless",

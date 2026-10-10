@@ -265,7 +265,7 @@ export function ExpressionList({
                       <Button
                         size="icon"
                         onClick={() => onDelete(expression)}
-                        className="h-8 w-8 bg-red-600 text-white hover:bg-red-700"
+                        className="h-8 w-8 bg-destructive text-white hover:bg-destructive/90"
                         title="删除"
                         aria-label="删除"
                       >

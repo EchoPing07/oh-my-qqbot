@@ -147,10 +147,10 @@ function getToolIcon(toolName?: string): LucideIcon {
 function getToolCallSourceBadgeClassName(source?: string): string {
   const normalizedSource = (source ?? '').trim().toLowerCase()
   if (normalizedSource === 'reasoning') {
-    return 'border-teal-500/45 bg-teal-500/10 text-teal-700 dark:text-teal-300'
+    return 'border-border bg-muted/40 text-foreground'
   }
   if (normalizedSource === 'response') {
-    return 'border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    return 'border-border bg-muted/40 text-muted-foreground'
   }
   return 'border-muted-foreground/30 bg-muted/40 text-muted-foreground'
 }
@@ -213,8 +213,9 @@ function MonitorAvatar({
 function SessionAvatar({ session, status }: { session: SessionInfo; status?: StageStatusInfo }) {
   const targetType: AvatarTargetType = session.isGroupChat ? 'group' : 'user'
   const targetId = session.isGroupChat ? session.groupId : session.userId
+  // 状态指示点：等待用灰阶，运行中沿用语义绿点
   const statusDotClassName =
-    status && isWaitingForMessage(status) ? 'bg-blue-500' : 'bg-emerald-500'
+    status && isWaitingForMessage(status) ? 'bg-muted-foreground' : 'bg-emerald-500'
 
   return (
     <span className="relative flex h-7 w-7 shrink-0">
@@ -256,9 +257,9 @@ function MessageAvatar({
       }
       fallbackClassName={cn(
         'text-xs font-semibold',
-        isSent ? 'bg-emerald-500/15 text-emerald-500' : 'bg-blue-500/15 text-blue-500'
+        isSent ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
       )}
-      label={data.speaker_name || (isSent ? '麦麦' : '用户')}
+      label={data.speaker_name || (isSent ? '机器人' : '用户')}
       platform={data.platform}
       targetId={data.user_id}
       targetType="user"
@@ -298,7 +299,7 @@ function SessionSidebar({
         )}
       >
         <Bot className="h-8 w-8 opacity-40" />
-        <p className="text-center text-sm">等待 MaiSaka 会话…</p>
+        <p className="text-center text-sm">等待机器人会话…</p>
       </div>
     )
   }
@@ -672,7 +673,7 @@ function MonitorStatusActions({
           size="sm"
           className="h-6 shrink-0 border-0! px-2 text-[11px]"
           onClick={onFindPreviousBotMessage}
-          title="查找上条麦麦消息"
+          title="查找上条机器人消息"
         >
           <ChevronUp className="mr-1 h-3 w-3" />
           上条
@@ -942,7 +943,7 @@ function MessageMediaItem({ item }: { item: MaisakaMessageMedia }) {
         )}
       </div>
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="border-0 bg-black/95 p-2 text-white shadow-2xl [--dialog-width:72rem]">
+        <DialogContent className="border bg-card p-2 text-foreground shadow-lg [--dialog-width:72rem]">
           <DialogTitle className="sr-only">{label}预览</DialogTitle>
           <DialogDescription className="sr-only">正在查看放大的{label}。</DialogDescription>
           <div className="flex max-h-[calc(100vh-3rem)] min-h-0 w-full items-center justify-center">
@@ -1037,7 +1038,7 @@ function MessageSentCard({
       <MessageAvatar data={data} kind="sent" />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
-          <span className="text-sm font-medium">{data.speaker_name || '麦麦'}</span>
+          <span className="text-sm font-medium">{data.speaker_name || '机器人'}</span>
           <span className="text-muted-foreground text-xs">{formatTimestamp(data.timestamp)}</span>
         </div>
         <div
@@ -1070,7 +1071,7 @@ function TimingGateCard({ data }: { data: TimingGateResultEvent }) {
 
   return (
     <div className="bg-background flex items-start gap-3 rounded-md border px-3 py-2 shadow-sm">
-      <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
+      <div className="bg-muted mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground">
         <Timer className="h-3.5 w-3.5" />
       </div>
       <div className="min-w-0 flex-1">
@@ -1171,9 +1172,9 @@ function PlannerInterruptedCard({ data }: { data: PlannerFinalizedEvent }) {
   const planner = data.planner
 
   return (
-    <div className="rounded-md border border-amber-500/35 bg-amber-500/5 px-3 py-2">
+    <div className="bg-muted/50 rounded-md border border-border px-3 py-2">
       <div className="flex items-center gap-2 text-sm">
-        <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" />
+        <AlertCircle className="text-muted-foreground h-4 w-4 shrink-0" />
         <span className="font-medium">Planner 被新消息打断</span>
         <Badge variant="outline" className="ml-auto text-[10px]">
           #{data.cycle_id}
@@ -1192,7 +1193,7 @@ function PlannerInterruptedCard({ data }: { data: PlannerFinalizedEvent }) {
 function PlannerResponseCard({ data }: { data: PlannerResponseEvent }) {
   return (
     <div className="flex items-start gap-3">
-      <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
+      <div className="bg-primary/15 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-primary">
         <Brain className="h-3.5 w-3.5" />
       </div>
       <div className="min-w-0 flex-1">
@@ -1232,10 +1233,10 @@ function PlannerFinalizedCard({
   const canOpenReasoning = Boolean(promptHtmlUri && parsePromptHtmlReasoningTarget(promptHtmlUri))
 
   return (
-    <Card data-maisaka-trace-card="true" className="border-l-4 border-l-emerald-500/60">
+    <Card data-maisaka-trace-card="true" className="border-l-foreground/60 border-l-4">
       <CardHeader className="space-y-2 px-4 py-2">
         <div data-maisaka-trace-meta="true" className="flex flex-wrap items-center gap-2">
-          <Brain className="h-4 w-4 text-emerald-500" />
+          <Brain className="h-4 w-4 text-foreground" />
           <CardTitle className="text-sm font-medium">Planner</CardTitle>
           <ModelNameBadge modelName={planner?.model_name} />
           <Badge variant="outline" className="ml-auto text-xs font-normal">
@@ -1620,7 +1621,7 @@ function PlannerToolResultCard({
           )}
           {!tool.status && !tool.success && (
             <>
-              <XCircle className="h-3.5 w-3.5 text-red-500" />
+              <XCircle className="text-destructive h-3.5 w-3.5" />
               <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
                 {statusText}
               </Badge>
@@ -1785,7 +1786,7 @@ function PlannerToolCallsBlock({
 
   if (regularTools.length <= 0 && finishTools.length > 0 && plannerStopped) {
     return (
-      <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+      <div className="bg-muted/50 rounded-md border border-border px-3 py-2">
         <div className="flex items-center gap-2 text-sm">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
           <span className="font-medium">本轮思考暂时结束</span>
@@ -1796,10 +1797,10 @@ function PlannerToolCallsBlock({
   }
 
   return (
-    <Card data-maisaka-trace-card="true" className="border-l-4 border-l-teal-500/60">
+    <Card data-maisaka-trace-card="true" className="border-l-4 border-l-border">
       <CardHeader className="space-y-2 px-4 py-2">
         <div data-maisaka-trace-meta="true" className="flex flex-wrap items-center gap-2">
-          <ToolIcon className="h-4 w-4 text-teal-500" />
+          <ToolIcon className="h-4 w-4 text-foreground" />
           <CardTitle
             className={cn('text-sm font-semibold', !singleToolIsWait && 'font-mono')}
           >
@@ -1856,7 +1857,7 @@ function PlannerToolCallsBlock({
           )}
         </div>
         {plannerStopped && (
-          <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 text-xs">
+          <div className="bg-muted/50 flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
             <span className="font-medium">本轮思考暂时结束</span>
             <span className="text-muted-foreground">等待新的消息。</span>
@@ -1892,10 +1893,10 @@ function PlannerNativeToolCallsBlock({ data }: { data: PlannerFinalizedEvent }) 
   }
 
   return (
-    <Card data-maisaka-trace-card="true" className="border-l-4 border-l-sky-500/60">
+    <Card data-maisaka-trace-card="true" className="border-l-4 border-l-border">
       <CardHeader className="space-y-2 px-4 py-2">
         <div data-maisaka-trace-meta="true" className="flex items-center gap-2">
-          <Globe2 className="h-4 w-4 text-sky-500" />
+          <Globe2 className="text-muted-foreground h-4 w-4" />
           <CardTitle className="text-sm font-medium">Provider 原生工具</CardTitle>
           <Badge variant="secondary" className="ml-auto text-[10px]">
             {nativeToolCalls.length} 次
@@ -1953,7 +1954,7 @@ function ToolExecutionCard({ data }: { data: ToolExecutionEvent }) {
       <div
         className={cn(
           'mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-          data.success ? 'bg-teal-500/15 text-teal-500' : 'bg-red-500/15 text-red-500'
+          data.success ? 'bg-emerald-500/15 text-emerald-500' : 'bg-destructive/15 text-destructive'
         )}
       >
         <Wrench className="h-3.5 w-3.5" />
@@ -1962,9 +1963,9 @@ function ToolExecutionCard({ data }: { data: ToolExecutionEvent }) {
         <div className="mb-1 flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-medium">{data.tool_name}</span>
           {data.success ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-teal-500" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
           ) : (
-            <XCircle className="h-3.5 w-3.5 text-red-500" />
+            <XCircle className="text-destructive h-3.5 w-3.5" />
           )}
           <span className="text-muted-foreground text-xs">{formatMs(data.duration_ms)}</span>
         </div>
@@ -2037,10 +2038,10 @@ function CollapsibleText({
 
 function ReplierResponseCard({ data }: { data: ReplierResponseEvent }) {
   return (
-    <Card data-maisaka-trace-card="true" className="border-l-4 border-l-purple-500/60">
+    <Card data-maisaka-trace-card="true" className="border-l-foreground/60 border-l-4">
       <CardHeader className="space-y-2 px-4 py-2">
         <div data-maisaka-trace-meta="true" className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-purple-500" />
+          <Bot className="h-4 w-4 text-foreground" />
           <CardTitle className="text-sm font-medium">回复器响应</CardTitle>
           <Badge variant="outline" className="ml-auto text-xs font-normal">
             {formatMs(data.duration_ms)}
@@ -2328,7 +2329,7 @@ const MonitorTimeline = memo(function MonitorTimeline({
     [messageEntryIndexes, revealTimelineMessage, toast]
   )
 
-  /** 向上查找当前视口上方最近一条麦麦自己发送的消息并滚动过去 */
+  /** 向上查找当前视口上方最近一条机器人自己发送的消息并滚动过去 */
   const handleFindPreviousBotMessage = useCallback(() => {
     const viewportTop = scrollViewport?.scrollTop ?? 0
     // 虚拟列表带 overscan，按行位置过滤出视口内第一行，避免选中视口上方的预渲染行
@@ -2349,8 +2350,8 @@ const MonitorTimeline = memo(function MonitorTimeline({
     }
 
     toast({
-      title: '上方没有更多麦麦发送的消息',
-      description: '已经到达当前时间线里麦麦发送消息的最上方。',
+      title: '上方没有更多机器人发送的消息',
+      description: '已经到达当前时间线里机器人发送消息的最上方。',
     })
   }, [revealTimelineMessage, scrollViewport, timelineVirtualizer, toast, visibleTimelineEntries])
 
@@ -2535,9 +2536,9 @@ const MonitorTimeline = memo(function MonitorTimeline({
             {visibleTimelineEntries.length === 0 ? (
               <div className="text-muted-foreground flex flex-col items-center justify-center gap-3 py-20">
                 <Clock className="h-10 w-10 opacity-30" />
-                <p className="text-sm">等待 MaiSaka 推理事件…</p>
+                <p className="text-sm">等待机器人推理事件…</p>
                 <p className="text-xs opacity-60">
-                  当 MaiSaka 处理新消息时，推理过程会实时展示在这里
+                  当机器人处理新消息时，推理过程会实时展示在这里
                 </p>
               </div>
             ) : (

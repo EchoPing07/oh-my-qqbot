@@ -92,7 +92,7 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
     <div
       className={cn(
         'space-y-3 pb-5 pt-3 sm:pb-6 sm:pt-4',
-        advanced && 'bg-amber-50/30 px-2 dark:bg-amber-500/10',
+        advanced && 'bg-muted/40 px-2',
       )}
     >
       <div className="flex min-w-0 items-baseline justify-between gap-3">
@@ -215,7 +215,7 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
                       <TooltipContent
                         side="right"
                         align="center"
-                        className="max-w-72 bg-background text-foreground border shadow-lg"
+                        className="max-w-72 bg-background text-foreground border shadow-md"
                       >
                         {option.description}
                       </TooltipContent>
@@ -229,7 +229,7 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
         </div>
 
         {showAdvancedSettings && (
-          <div className="grid gap-3 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10 sm:grid-cols-2">
+          <div className="grid gap-3 rounded-md border bg-muted/30 p-3 sm:grid-cols-2">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex shrink-0 items-center gap-1.5">
                 <Label>任务硬超时 (秒)</Label>

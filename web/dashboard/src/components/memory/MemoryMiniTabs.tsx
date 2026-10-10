@@ -42,8 +42,8 @@ export function MemoryMiniTabs<TValue extends string>({
           className={cn(
             'rounded-full px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors',
             'hover:bg-background/80 hover:text-foreground',
-            'data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80',
-            'data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm',
+            'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground',
+            'data-[state=active]:shadow-sm',
             triggerClassName,
           )}
         >

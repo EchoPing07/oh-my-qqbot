@@ -241,14 +241,11 @@ function ConfidenceIndicator({ value, status }: { value: number | null; status: 
 
   const normalizedValue = Math.max(0, Math.min(1, value))
   const percentage = Math.round(normalizedValue * 100)
-  const color = `hsl(${Math.round(normalizedValue * 120)} 72% 42%)`
   return (
     <div className="mt-2">
       <div className="text-muted-foreground flex items-center justify-between text-[11px]">
         <span>置信度</span>
-        <span className="font-medium tabular-nums" style={{ color }}>
-          {percentage}%
-        </span>
+        <span className="text-foreground font-medium tabular-nums">{percentage}%</span>
       </div>
       <div
         className="bg-muted mt-1 h-1.5 overflow-hidden rounded-full"
@@ -259,8 +256,8 @@ function ConfidenceIndicator({ value, status }: { value: number | null; status: 
         aria-valuenow={percentage}
       >
         <div
-          className="h-full rounded-full transition-[width,background-color] duration-300"
-          style={{ width: `${percentage}%`, backgroundColor: color }}
+          className="bg-foreground h-full rounded-full transition-[width] duration-300"
+          style={{ width: `${percentage}%` }}
         />
       </div>
     </div>
@@ -289,10 +286,10 @@ function getContextMessagePresentation(message: ContextMessage) {
 }
 
 function contextMessageRoleLabel(message: ContextMessage) {
-  if (message.source === 'evaluated_reply') return '麦麦'
+  if (message.source === 'evaluated_reply') return '机器人'
   if (message.source === 'followup') return '后续'
   if (message.source === 'user') return '用户'
-  if (message.source === 'guided_reply') return '麦麦'
+  if (message.source === 'guided_reply') return '机器人'
   if (message.role === 'reasoning') return '推理'
   if (message.role === 'assistant') return '助手'
   return '参考'
@@ -300,26 +297,26 @@ function contextMessageRoleLabel(message: ContextMessage) {
 
 function contextMessageStyle(message: ContextMessage) {
   if (message.source === 'user' || message.source === 'followup') {
-    return 'border-emerald-400/70 bg-emerald-50/45 dark:border-emerald-700 dark:bg-emerald-950/15'
+    return 'border-border bg-muted/30'
   }
   if (message.source === 'guided_reply' || message.source === 'evaluated_reply') {
-    return 'border-orange-400/70 bg-orange-50/45 dark:border-orange-700 dark:bg-orange-950/15'
+    return 'border-primary/50 bg-primary/[0.06]'
   }
   if (message.role === 'reasoning') {
-    return 'border-indigo-400/70 bg-indigo-50/45 dark:border-indigo-700 dark:bg-indigo-950/15'
+    return 'border-dashed border-border bg-transparent'
   }
   return 'border-border bg-card/50'
 }
 
 function contextMessageBadgeStyle(message: ContextMessage) {
   if (message.source === 'user' || message.source === 'followup') {
-    return 'border-emerald-400/60 bg-emerald-100/70 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100'
+    return 'border-border bg-muted text-foreground'
   }
   if (message.source === 'guided_reply' || message.source === 'evaluated_reply') {
-    return 'border-orange-400/60 bg-orange-100/70 text-orange-900 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-100'
+    return 'border-primary/50 bg-primary/10 text-primary'
   }
   if (message.role === 'reasoning') {
-    return 'border-indigo-400/60 bg-indigo-100/70 text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100'
+    return 'border-border bg-background text-muted-foreground'
   }
   return 'bg-background/80'
 }
@@ -418,13 +415,10 @@ function StatusBadge({ status }: { status: string }) {
       variant="outline"
       className={cn(
         'text-[11px] font-medium whitespace-nowrap',
-        status === 'finalized' &&
-          'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-        status === 'pending' &&
-          'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-        status === 'incomplete' &&
-          'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
-        status === 'evaluating' && 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+        status === 'finalized' && 'border-border bg-muted/40 text-foreground',
+        status === 'pending' && 'border-border bg-muted/40 text-muted-foreground',
+        status === 'incomplete' && 'border-border bg-muted/30 text-muted-foreground',
+        status === 'evaluating' && 'border-border bg-muted/40 text-muted-foreground',
         status === 'evaluation_failed' && 'border-destructive/30 bg-destructive/10 text-destructive'
       )}
     >

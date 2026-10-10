@@ -27,7 +27,7 @@ const NATURAL_LANGUAGE_TEXT_STYLE: CSSProperties = {
 }
 
 const ITEM_JSON_PANEL_STYLE: CSSProperties = {
-  backgroundColor: 'var(--retro-paper, hsl(var(--color-background)))',
+  backgroundColor: 'hsl(var(--color-muted))',
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -67,10 +67,8 @@ function getStructuredPromptMessageRoleStyle(
   if (isBotSelf) {
     return {
       label: role || 'user',
-      containerClassName:
-        'border-orange-300/70 bg-orange-50/75 dark:border-orange-700/60 dark:bg-orange-950/25',
-      badgeClassName:
-        'border-orange-400/70 bg-orange-100/85 text-orange-900 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-100',
+      containerClassName: 'border-primary/50 bg-primary/[0.06]',
+      badgeClassName: 'border-primary/50 bg-primary/10 text-primary',
     }
   }
   const roleStyles: Record<
@@ -79,55 +77,41 @@ function getStructuredPromptMessageRoleStyle(
   > = {
     system: {
       label: 'system',
-      containerClassName:
-        'border-cyan-300/70 bg-cyan-50/70 dark:border-cyan-700/60 dark:bg-cyan-950/25',
-      badgeClassName:
-        'border-cyan-400/70 bg-cyan-100/80 text-cyan-900 dark:border-cyan-700 dark:bg-cyan-950 dark:text-cyan-100',
+      containerClassName: 'border-border bg-muted/30',
+      badgeClassName: 'border-border bg-background text-muted-foreground',
     },
     user: {
       label: 'user',
-      containerClassName:
-        'border-emerald-300/70 bg-emerald-50/70 dark:border-emerald-700/60 dark:bg-emerald-950/25',
-      badgeClassName:
-        'border-emerald-400/70 bg-emerald-100/80 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100',
+      containerClassName: 'border-border bg-card',
+      badgeClassName: 'border-border bg-muted text-foreground',
     },
     assistant: {
       label: 'assistant',
-      containerClassName:
-        'border-amber-300/70 bg-amber-50/70 dark:border-amber-700/60 dark:bg-amber-950/25',
-      badgeClassName:
-        'border-amber-400/70 bg-amber-100/80 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100',
+      containerClassName: 'border-border bg-muted/40',
+      badgeClassName: 'border-border bg-muted text-foreground',
     },
     tool: {
       label: 'tool',
-      containerClassName:
-        'border-violet-300/70 bg-violet-50/70 dark:border-violet-700/60 dark:bg-violet-950/25',
-      badgeClassName:
-        'border-violet-400/70 bg-violet-100/80 text-violet-900 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-100',
+      containerClassName: 'border-border bg-muted/20',
+      badgeClassName: 'border-border bg-background text-muted-foreground',
     },
     reasoning: {
       label: 'reasoning',
-      containerClassName:
-        'border-indigo-300/70 bg-indigo-50/70 dark:border-indigo-700/60 dark:bg-indigo-950/25',
-      badgeClassName:
-        'border-indigo-400/70 bg-indigo-100/80 text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100',
+      containerClassName: 'border-dashed border-border bg-transparent',
+      badgeClassName: 'border-border bg-background text-muted-foreground',
     },
     function_call: {
       label: 'function call',
-      containerClassName:
-        'border-fuchsia-300/70 bg-fuchsia-50/70 dark:border-fuchsia-700/60 dark:bg-fuchsia-950/25',
-      badgeClassName:
-        'border-fuchsia-400/70 bg-fuchsia-100/80 text-fuchsia-900 dark:border-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-100',
+      containerClassName: 'border-border bg-muted/20',
+      badgeClassName: 'border-border bg-background text-muted-foreground',
     },
   }
   if (roleStyles[normalizedRole]) return roleStyles[normalizedRole]
   if (normalizedRole.startsWith('provider_')) {
     return {
       label: normalizedRole.replace('_', ' '),
-      containerClassName:
-        'border-sky-300/70 bg-sky-50/70 dark:border-sky-700/60 dark:bg-sky-950/25',
-      badgeClassName:
-        'border-sky-400/70 bg-sky-100/80 text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100',
+      containerClassName: 'border-border bg-muted/20',
+      badgeClassName: 'border-border bg-background text-muted-foreground',
     }
   }
   return {
@@ -371,13 +355,13 @@ export function normalizeToolCallForDisplay(toolCall: unknown): ToolCallDisplayI
 
 export function getToolCallSourceClassName(source: string): string {
   if (source === 'reasoning') {
-    return 'border-teal-500/45 bg-teal-500/10 text-teal-700 dark:text-teal-300'
+    return 'border-border bg-muted/40 text-foreground'
   }
   if (source === 'response') {
-    return 'border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    return 'border-border bg-muted/40 text-muted-foreground'
   }
   if (source === 'provider') {
-    return 'border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+    return 'border-border bg-muted/40 text-muted-foreground'
   }
   return 'border-muted-foreground/30 bg-muted/40 text-muted-foreground'
 }
@@ -435,7 +419,7 @@ export function normalizeDisplayName(name: string): string {
 }
 
 export function extractBotSelfNames(prompt: StructuredPromptPayload | null): Set<string> {
-  const names = new Set<string>(['麦麦'])
+  const names = new Set<string>(['机器人'])
 
   for (const item of prompt?.request_items ?? []) {
     if (item.item_type !== 'SystemMessageItem') continue
@@ -864,7 +848,7 @@ export function ContextItemCard({
           'min-w-0 rounded-md border',
           'lg:absolute lg:top-3 lg:right-3',
           itemJsonOpen
-            ? 'lg:z-40 lg:w-[min(48%,46rem)] lg:shadow-xl'
+            ? 'lg:z-40 lg:w-[min(48%,46rem)] lg:shadow-lg'
             : 'lg:z-10 lg:w-48 lg:shadow-sm'
         )}
       >

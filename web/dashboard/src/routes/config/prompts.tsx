@@ -865,13 +865,13 @@ export function PromptManagementPage() {
 
             {diffMode && (
               <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-                <Badge variant="outline" className="border-green-500/50 bg-green-500/10 text-green-700">
+                <Badge variant="outline" className="border-primary/50 bg-primary/10 text-primary">
                   新增 {diffState.added}
                 </Badge>
-                <Badge variant="outline" className="border-red-500/50 bg-red-500/10 text-red-700">
+                <Badge variant="outline" className="border-destructive/50 bg-destructive/10 text-destructive">
                   删除 {diffState.removed}
                 </Badge>
-                <Badge variant="outline" className="border-amber-500/50 bg-amber-500/10 text-amber-700">
+                <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
                   修改 {diffState.changed}
                 </Badge>
               </div>

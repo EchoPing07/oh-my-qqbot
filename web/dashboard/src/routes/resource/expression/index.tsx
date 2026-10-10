@@ -374,7 +374,7 @@ export function ExpressionManagementPage() {
           ? `开启${statusLabel}`
           : `关闭${statusLabel}`
     const dotClass =
-      status === 'mixed' ? 'bg-amber-500' : status === 'on' ? 'bg-green-500' : 'bg-muted-foreground'
+      status === 'mixed' ? 'bg-primary' : status === 'on' ? 'bg-emerald-500' : 'bg-muted-foreground'
 
     return (
       <div className={`flex items-center gap-1.5 px-2 py-1 text-xs ${separated ? 'border-l' : ''}`}>
@@ -433,7 +433,7 @@ export function ExpressionManagementPage() {
                 </div>
                 <div className="flex min-w-0 items-center justify-between gap-2 border-l px-2.5 py-1">
                   <div className="text-muted-foreground text-[11px]">近7天新增</div>
-                  <div className="text-sm leading-none font-semibold text-green-600">
+                  <div className="text-sm leading-none font-semibold text-primary">
                     {stats.recent_7days}
                   </div>
                 </div>
@@ -631,7 +631,7 @@ export function ExpressionManagementPage() {
                                 <Zap className="mr-2 h-4 w-4" />
                                 精选
                                 {uncheckedCount > 0 && (
-                                  <span className="ml-auto rounded-full bg-orange-500 px-1.5 py-0.5 text-xs leading-none text-white">
+                                  <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-xs leading-none text-primary-foreground">
                                     {uncheckedCount > 99 ? '99+' : uncheckedCount}
                                   </span>
                                 )}

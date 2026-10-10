@@ -500,7 +500,7 @@ function BotConfigPageContent() {
       await runWithAutoSaveBarrier(() => updateBotConfig(configToSave))
       toast({
         title: '保存成功',
-        description: '麦麦设置已保存',
+        description: '机器人设置已保存',
       })
     } catch (error) {
       console.error('保存配置失败:', error)
@@ -530,7 +530,7 @@ function BotConfigPageContent() {
     })
   }
 
-  // 重启麦麦
+  // 重启主程序
   const handleRestart = async () => {
     await triggerRestart()
   }
@@ -543,7 +543,7 @@ function BotConfigPageContent() {
       await runWithAutoSaveBarrier(() => updateBotConfig(configToSave))
       toast({
         title: '保存成功',
-        description: '配置已保存，即将重启麦麦...',
+        description: '配置已保存，即将重启主程序...',
       })
       // 等待一下让用户看到保存成功的提示
       await new Promise((resolve) => setTimeout(resolve, TOAST_DISPLAY_DELAY))
@@ -664,7 +664,12 @@ function BotConfigPageContent() {
             )}
             {editMode === 'detail' && pinnedTabs.length > 0 && (
               <div data-config-pinned-tabs-frame="true" className="min-w-0 flex-1 overflow-hidden rounded-md border bg-muted/30 p-1 shadow-inner">
-                <nav aria-label="钉固的设置页面" tabIndex={0} className="flex min-w-0 items-center gap-2 overflow-x-auto px-1 py-0.5">
+                <nav
+                  aria-label="钉固的设置页面"
+                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- 横向滚动区域需保持键盘可达
+                  tabIndex={0}
+                  className="flex min-w-0 items-center gap-2 overflow-x-auto px-1 py-0.5"
+                >
                   {pinnedTabs.map((pinned) => {
                     const tab = tabGroups.find((item) => item.id === pinned.id)
                     if (!tab) return null
@@ -1512,7 +1517,7 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>实验性功能</AlertDialogTitle>
             <AlertDialogDescription className="leading-6">
-              实验性功能指的是尚未完善、并不适用于所有麦麦、用于测试、可能移除，或可能具有有趣效果的功能选项。请斟酌开启，遇见预料之外的问题时，优先关闭实验性功能看看。
+              实验性功能指的是尚未完善、并不适用于所有场景、用于测试、可能移除，或可能具有有趣效果的功能选项。请斟酌开启，遇见预料之外的问题时，优先关闭实验性功能看看。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

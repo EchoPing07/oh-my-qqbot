@@ -57,7 +57,7 @@ function BubbleAvatar({ type, visible, imageUrl }: BubbleAvatarProps) {
               'text-xs',
               type === 'user'
                 ? 'bg-secondary text-secondary-foreground'
-                : 'bg-primary-gradient text-primary-foreground'
+                : 'bg-foreground text-background'
             )}
           >
             {type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
@@ -72,9 +72,8 @@ function EmptyState({ botName }: { botName: string }) {
   const { t } = useTranslation()
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-      <div className="bg-primary-gradient text-primary-foreground relative flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg">
+      <div className="text-primary-foreground bg-foreground relative flex h-16 w-16 items-center justify-center rounded-lg">
         <Sparkles className="h-7 w-7" />
-        <span className="bg-primary/30 absolute inset-0 -z-10 animate-pulse rounded-2xl blur-xl" />
       </div>
       <div className="space-y-1">
         <h2 className="text-base font-semibold sm:text-lg">
@@ -482,8 +481,8 @@ export function MessageList({
                           className={cn(
                             'max-w-full min-w-0 overflow-hidden px-3.5 py-2 text-sm leading-relaxed wrap-break-word shadow-sm/30',
                             isUser
-                              ? 'bg-primary text-primary-foreground rounded-2xl rounded-br-md'
-                              : 'bg-muted text-foreground rounded-2xl rounded-bl-md'
+                              ? 'bg-muted text-foreground rounded-2xl rounded-br-md'
+                              : 'bg-card text-foreground rounded-2xl rounded-bl-md border border-border'
                           )}
                         >
                           <RenderMessageContent message={message} />

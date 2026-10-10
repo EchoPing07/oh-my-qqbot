@@ -378,7 +378,7 @@ function SetupPageContent() {
         }),
       })
 
-      // 3. 配置文件会被 MaiBot 热加载；完成后直接回到首页。
+      // 3. 配置文件会被主程序热加载；完成后直接回到首页。
       navigate({ to: '/' })
     } catch (error) {
       toast({
@@ -433,7 +433,7 @@ function SetupPageContent() {
   }
 
   return (
-    <div className="from-primary/5 via-background to-secondary/5 relative flex h-full min-h-screen flex-col items-center justify-center overflow-y-auto overflow-x-hidden bg-gradient-to-br p-3 md:p-4">
+    <div className="bg-background relative flex h-full min-h-screen flex-col items-center justify-center overflow-y-auto overflow-x-hidden p-3 md:p-4">
       {/* 语言切换 */}
       <div className="absolute top-3 right-3 z-20">
         <DropdownMenu>
@@ -462,12 +462,6 @@ function SetupPageContent() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-
-      {/* 背景装饰 */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="bg-primary/5 absolute top-1/4 left-1/4 h-64 w-64 rounded-full blur-3xl md:h-96 md:w-96" />
-        <div className="bg-secondary/5 absolute right-1/4 bottom-1/4 h-64 w-64 rounded-full blur-3xl md:h-96 md:w-96" />
       </div>
 
       {/* 加载状态 */}
@@ -555,7 +549,7 @@ function SetupPageContent() {
             </div>
 
             {/* 步骤内容卡片 */}
-            <Card className="mb-4 shadow-lg md:mb-5">
+            <Card className="mb-4 md:mb-5">
               <CardContent className="p-4 md:p-8">
                   <div className="min-h-0">
                   <div className="mb-4 md:mb-6">

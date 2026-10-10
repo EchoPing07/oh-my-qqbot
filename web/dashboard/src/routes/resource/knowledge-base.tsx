@@ -389,8 +389,8 @@ function resolveRuntimeBadge(runtimeConfig: MemoryRuntimeConfigPayload) {
       value: '已停用',
       description: '记忆功能已由用户配置关闭',
       icon: CircleAlert,
-      className: 'border-slate-500/25',
-      iconClassName: 'text-slate-500',
+      className: 'border-border',
+      iconClassName: 'text-muted-foreground',
     }
   }
   if (!coreReady) {
@@ -398,8 +398,8 @@ function resolveRuntimeBadge(runtimeConfig: MemoryRuntimeConfigPayload) {
       value: '核心不可用',
       description: '元数据库未能完成初始化',
       icon: CircleAlert,
-      className: 'border-red-500/25',
-      iconClassName: 'text-red-500',
+      className: 'border-destructive/30',
+      iconClassName: 'text-destructive',
     }
   }
   if (degraded) {
@@ -407,16 +407,16 @@ function resolveRuntimeBadge(runtimeConfig: MemoryRuntimeConfigPayload) {
       value: '降级就绪',
       description: availableChannels ? `可用通道：${availableChannels}` : '核心可用，检索通道暂不可用',
       icon: CircleAlert,
-      className: 'border-amber-500/25',
-      iconClassName: 'text-amber-500',
+      className: 'border-border',
+      iconClassName: 'text-muted-foreground',
     }
   }
   return {
     value: '就绪',
     description: availableChannels ? `可用通道：${availableChannels}` : '运行时检查通过',
     icon: CheckCircle2,
-    className: 'border-emerald-500/25',
-    iconClassName: 'text-emerald-500',
+    className: 'border-emerald-500/30',
+    iconClassName: 'text-emerald-600',
   }
 }
 
@@ -433,8 +433,8 @@ function resolveVectorPoolsBadge(runtimeConfig: MemoryRuntimeConfigPayload): Vec
     return {
       value: vectorState === 'unavailable' ? '向量不可用' : '向量降级',
       description: vectorHealth?.reason || '已切换到稀疏、图谱检索',
-      className: 'border-amber-500/25',
-      iconClassName: 'text-amber-500',
+      className: 'border-border',
+      iconClassName: 'text-muted-foreground',
     }
   }
   if (vectorState === 'recovering') {
@@ -445,8 +445,8 @@ function resolveVectorPoolsBadge(runtimeConfig: MemoryRuntimeConfigPayload): Vec
         : '新向量世代已就绪，正在复制可信旧向量',
       progressValue: copyPercent,
       progressLabel: copyPercent === undefined ? undefined : `${copyPercent.toFixed(1)}%`,
-      className: 'border-amber-500/25',
-      iconClassName: 'text-amber-500',
+      className: 'border-border',
+      iconClassName: 'text-muted-foreground',
     }
   }
   const vectorPools = runtimeConfig.vector_pools
@@ -469,8 +469,8 @@ function resolveVectorPoolsBadge(runtimeConfig: MemoryRuntimeConfigPayload): Vec
     return {
       value: '双池',
       description: `段落 ${paragraphCount} · 图谱 ${graphCount}`,
-      className: 'border-cyan-500/25',
-      iconClassName: 'text-cyan-500',
+      className: 'border-muted-foreground/25',
+      iconClassName: 'text-foreground',
     }
   }
 
@@ -481,24 +481,24 @@ function resolveVectorPoolsBadge(runtimeConfig: MemoryRuntimeConfigPayload): Vec
         description: `${migrationStage} · ${migrationSummary}`,
         progressValue: migrationPercent,
         progressLabel: migrationPercent === undefined ? undefined : `${migrationPercent.toFixed(1)}%`,
-        className: 'border-amber-500/25',
-        iconClassName: 'text-amber-500',
+        className: 'border-border',
+        iconClassName: 'text-muted-foreground',
       }
     }
 
     return {
       value: '双池未就绪',
       description: `段落 ${paragraphCount} · 图谱 ${graphCount}`,
-      className: 'border-amber-500/25',
-      iconClassName: 'text-amber-500',
+      className: 'border-border',
+      iconClassName: 'text-muted-foreground',
     }
   }
 
   return {
     value: '单池',
     description: `单池向量 ${singleCount}`,
-    className: 'border-cyan-500/25',
-    iconClassName: 'text-cyan-500',
+    className: 'border-muted-foreground/25',
+    iconClassName: 'text-foreground',
   }
 }
 
@@ -947,8 +947,8 @@ export function KnowledgeBasePage() {
         progressValue: undefined,
         progressLabel: undefined,
         icon: HardDrive,
-        className: 'border-sky-500/25',
-        iconClassName: 'text-sky-500',
+        className: 'border-primary/25',
+        iconClassName: 'text-primary',
       },
       {
         label: '向量池',
@@ -967,8 +967,8 @@ export function KnowledgeBasePage() {
         progressValue: undefined,
         progressLabel: undefined,
         icon: FolderOpen,
-        className: 'border-violet-500/25',
-        iconClassName: 'text-violet-500',
+        className: 'border-border',
+        iconClassName: 'text-muted-foreground',
       },
     ]
   }, [runtimeConfig])

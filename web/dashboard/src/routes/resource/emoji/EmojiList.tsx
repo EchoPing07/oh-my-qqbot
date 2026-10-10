@@ -16,7 +16,7 @@ const emojiStatusLabel: Record<Emoji['status'], string> = {
 }
 
 function getEmojiStatusClassName(status: Emoji['status']) {
-  if (status === 'adopted') return 'bg-green-600 text-[10px] px-1 py-0'
+  if (status === 'adopted') return 'bg-foreground text-background text-[10px] px-1 py-0'
   if (status === 'discarded') return 'text-[10px] px-1 py-0'
   return 'text-[10px] px-1 py-0 bg-background/90'
 }
@@ -147,11 +147,11 @@ export function EmojiList({
               />
               <Badge
                 variant="outline"
-                className="absolute bottom-1 left-1 bg-background/90 text-[10px] px-1 py-0 backdrop-blur"
+                className="absolute bottom-1 left-1 bg-background text-[10px] px-1 py-0"
               >
                 {emoji.format.toUpperCase()}
               </Badge>
-              <span className="absolute bottom-1 right-1 rounded border bg-background/90 px-1 py-0 text-[10px] font-mono text-muted-foreground backdrop-blur">
+              <span className="absolute bottom-1 right-1 rounded border bg-background px-1 py-0 text-[10px] font-mono text-muted-foreground">
                 {emoji.usage_count}次
               </span>
             </div>
@@ -171,6 +171,7 @@ export function EmojiList({
             </div>
 
             {/* 操作按钮始终显示在卡片底部，按实际按钮数量均分一行。 */}
+            {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 仅拦截键盘事件冒泡，容器本身非交互目标 */}
             <div
               className="grid auto-cols-fr grid-flow-col items-center gap-0.5 border-t bg-card p-1"
               onKeyDown={(event) => event.stopPropagation()}
@@ -205,7 +206,7 @@ export function EmojiList({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-full min-w-0 px-0 text-green-600 hover:text-green-700"
+                  className="h-8 w-full min-w-0 px-0 text-foreground hover:text-foreground/70"
                   onClick={(e) => {
                     e.stopPropagation()
                     onRegister(emoji)
@@ -220,7 +221,7 @@ export function EmojiList({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-full min-w-0 px-0 text-orange-600 hover:text-orange-700"
+                  className="h-8 w-full min-w-0 px-0 text-muted-foreground hover:text-foreground"
                   onClick={(e) => {
                     e.stopPropagation()
                     onBan(emoji)
@@ -234,7 +235,7 @@ export function EmojiList({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-full min-w-0 px-0 text-red-600 hover:text-red-700"
+                className="h-8 w-full min-w-0 px-0 text-destructive hover:text-destructive/80"
                 onClick={(e) => {
                   e.stopPropagation()
                   onDelete(emoji)

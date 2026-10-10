@@ -538,9 +538,9 @@ export function OtherTab() {
       </div>
 
       {/* 开发者工具 */}
-      <div className="rounded-lg border border-dashed border-yellow-500/50 bg-yellow-500/5 p-4 sm:p-6">
-        <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+      <div className="rounded-lg border border-dashed border-border bg-muted/20 p-4 sm:p-6">
+        <h3 className="mb-3 flex items-center gap-2 text-base font-semibold sm:mb-4 sm:text-lg">
+          <AlertTriangle className="text-muted-foreground h-5 w-5" />
           {t('settings.other.devTools')}
         </h3>
         <div className="space-y-3 sm:space-y-4">

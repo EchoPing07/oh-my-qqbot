@@ -196,8 +196,8 @@ export function LegacyExpressionImportDialog({
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="!fixed !top-4 !translate-y-0 [--dialog-width:72rem] sm:!top-6">
         {isBusy && (
-          <div className="bg-background/80 absolute inset-0 z-20 flex items-center justify-center rounded-lg backdrop-blur-sm">
-            <div className="bg-background rounded-lg border px-5 py-4 text-center shadow-lg">
+          <div className="bg-background/95 absolute inset-0 z-20 flex items-center justify-center rounded-lg">
+            <div className="bg-background rounded-lg border px-5 py-4 text-center shadow-sm">
               {loadingPreview ? (
                 <ThinkingIllustration className="mx-auto" />
               ) : (
@@ -295,7 +295,7 @@ export function LegacyExpressionImportDialog({
                       <div className="min-w-0 text-sm">
                         {group.matched ? (
                           <span
-                            className="truncate text-green-600"
+                            className="truncate text-emerald-600"
                             title={
                               group.matched_sessions
                                 .map((session) => session.chat_name)
@@ -307,7 +307,7 @@ export function LegacyExpressionImportDialog({
                               : group.matched_chat_name || group.matched_session_id}
                           </span>
                         ) : (
-                          <span className="text-amber-600">未找到</span>
+                          <span className="text-muted-foreground">未找到</span>
                         )}
                       </div>
                       <Select

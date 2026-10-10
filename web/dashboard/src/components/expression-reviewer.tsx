@@ -745,7 +745,7 @@ export function ExpressionReviewer({
 
     if (expr.checked && modifier === 'user') {
       return (
-        <Badge variant="default" className="gap-1 bg-green-600 whitespace-nowrap">
+        <Badge variant="default" className="gap-1 bg-emerald-600 whitespace-nowrap">
           <User className="h-3 w-3" />
           人工通过
         </Badge>
@@ -964,7 +964,7 @@ export function ExpressionReviewer({
                         <Button
                           variant="default"
                           size="sm"
-                          className="flex-1 bg-green-600 hover:bg-green-700 sm:flex-none"
+                          className="flex-1 bg-foreground text-background hover:bg-foreground/90 sm:flex-none"
                           onClick={() => handleBatchReview(true)}
                           disabled={loading}
                         >
@@ -1003,7 +1003,7 @@ export function ExpressionReviewer({
                         <Button
                           variant="default"
                           size="sm"
-                          className="flex-1 bg-green-600 hover:bg-green-700 sm:flex-none"
+                          className="flex-1 bg-foreground text-background hover:bg-foreground/90 sm:flex-none"
                           onClick={() => handleBatchReview(true)}
                           disabled={loading}
                         >
@@ -1127,7 +1127,7 @@ export function ExpressionReviewer({
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-8 w-8 border-green-600 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
+                              className="h-8 w-8 border-foreground p-0 text-foreground hover:bg-muted hover:text-foreground"
                               onClick={() => handleReview(expr.id, true)}
                               disabled={processingIds.has(expr.id)}
                               title="通过"
@@ -1137,7 +1137,7 @@ export function ExpressionReviewer({
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-8 w-8 border-red-600 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              className="h-8 w-8 border-destructive p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                               onClick={() => handleReview(expr.id, false)}
                               disabled={processingIds.has(expr.id)}
                               title="拒绝"
@@ -1149,7 +1149,7 @@ export function ExpressionReviewer({
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 w-8 border-red-600 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            className="h-8 w-8 border-destructive p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => handleReview(expr.id, false)}
                             disabled={processingIds.has(expr.id)}
                             title="改为拒绝"
@@ -1163,7 +1163,7 @@ export function ExpressionReviewer({
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 w-8 border-red-600 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                className="h-8 w-8 border-destructive p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 onClick={() => handleReview(expr.id, false)}
                                 disabled={processingIds.has(expr.id)}
                                 title="改为拒绝"
@@ -1175,7 +1175,7 @@ export function ExpressionReviewer({
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 w-8 border-green-600 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
+                                  className="h-8 w-8 border-foreground p-0 text-foreground hover:bg-muted hover:text-foreground"
                                   onClick={() => handleReview(expr.id, true)}
                                   disabled={processingIds.has(expr.id)}
                                   title="通过"
@@ -1185,7 +1185,7 @@ export function ExpressionReviewer({
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 w-8 border-red-600 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                  className="h-8 w-8 border-destructive p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   onClick={() => handleReview(expr.id, false)}
                                   disabled={processingIds.has(expr.id)}
                                   title="拒绝"
@@ -1357,7 +1357,7 @@ export function ExpressionReviewer({
             ) : quickExpressions.length === 0 ? (
               <div className="flex flex-col items-center justify-center text-center">
                 <div className="bg-muted/50 mb-6 flex h-20 w-20 items-center justify-center rounded-full">
-                  <CheckCircle2 className="h-10 w-10 text-green-500" />
+                  <CheckCircle2 className="h-10 w-10 text-emerald-600" />
                 </div>
                 <h3 className="mb-2 text-xl font-semibold">全部审核完成！</h3>
                 <p className="text-muted-foreground">当前筛选条件下没有待处理的项目</p>
@@ -1381,7 +1381,7 @@ export function ExpressionReviewer({
                           className={cn(
                             'flex items-center gap-2 rounded-lg px-4 py-2 transition-all duration-300',
                             swipeDirectionRef.current === 'left'
-                              ? 'scale-110 bg-red-500/20 text-red-500'
+                              ? 'scale-110 bg-destructive/15 text-destructive'
                               : 'bg-muted/50 text-muted-foreground opacity-0',
                             !directions.left && 'invisible'
                           )}
@@ -1393,7 +1393,7 @@ export function ExpressionReviewer({
                           className={cn(
                             'flex items-center gap-2 rounded-lg px-4 py-2 transition-all duration-300',
                             swipeDirectionRef.current === 'right'
-                              ? 'scale-110 bg-green-500/20 text-green-500'
+                              ? 'scale-110 bg-emerald-500/15 text-emerald-600'
                               : 'bg-muted/50 text-muted-foreground opacity-0',
                             !directions.right && 'invisible'
                           )}
@@ -1490,10 +1490,10 @@ export function ExpressionReviewer({
                           id={`quick-expr-${expr.id}`}
                           aria-selected={true}
                           className={cn(
-                            'bg-card flex h-full min-h-0 flex-col overflow-hidden rounded-xl border p-5 shadow-xl select-none sm:p-6',
-                            'ring-border/50 shadow-2xl ring-1 active:cursor-grabbing',
+                            'bg-card flex h-full min-h-0 flex-col overflow-hidden rounded-xl border p-5 shadow-sm select-none sm:p-6',
+                            'ring-border/50 ring-1 active:cursor-grabbing',
                             // 冲突动效
-                            conflictId === expr.id && 'bg-orange-50/10 ring-4 ring-orange-500/50'
+                            conflictId === expr.id && 'ring-4 ring-primary/50'
                           )}
                           style={{ ...style, ...cardSpring }}
                           onMouseDown={handleMouseDown}
@@ -1506,10 +1506,10 @@ export function ExpressionReviewer({
                         >
                           {/* 冲突提示遮罩 */}
                           {conflictId === expr.id && (
-                            <div className="bg-background/80 animate-in fade-in absolute inset-0 z-50 flex flex-col items-center justify-center rounded-xl backdrop-blur-sm duration-300">
+                            <div className="bg-background/95 animate-in fade-in absolute inset-0 z-50 flex flex-col items-center justify-center rounded-xl duration-300">
                               <div className="relative">
-                                <div className="absolute inset-0 animate-ping rounded-full bg-orange-500/20" />
-                                <RefreshCw className="relative mb-4 h-16 w-16 animate-spin text-orange-500 duration-1000" />
+                                <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+                                <RefreshCw className="relative mb-4 h-16 w-16 animate-spin text-primary duration-1000" />
                               </div>
                               <h3 className="text-foreground animate-in slide-in-from-bottom-2 fade-in text-xl font-bold duration-500">
                                 数据已更新
@@ -1529,7 +1529,7 @@ export function ExpressionReviewer({
                                 : 'opacity-0'
                             )}
                           >
-                            <div className="bg-background/80 border-border rounded-full border p-4 shadow-lg backdrop-blur-sm">
+                            <div className="bg-background/95 border-border rounded-full border p-4 shadow-sm">
                               <Ban className="text-muted-foreground h-12 w-12" />
                             </div>
                           </div>
@@ -1589,7 +1589,7 @@ export function ExpressionReviewer({
                           id={`quick-expr-${expr.id}`}
                           aria-selected={false}
                           className={cn(
-                            'bg-card flex h-full min-h-0 flex-col overflow-hidden rounded-xl border p-5 shadow-xl select-none sm:p-6'
+                            'bg-card flex h-full min-h-0 flex-col overflow-hidden rounded-xl border p-5 shadow-sm select-none sm:p-6'
                           )}
                           style={style}
                         >
@@ -1657,10 +1657,10 @@ export function ExpressionReviewer({
                           variant="outline"
                           size="lg"
                           className={cn(
-                            'h-16 w-16 rounded-full border-2 shadow-lg transition-all active:scale-95',
+                            'h-16 w-16 rounded-full border-2 shadow-sm transition-all active:scale-95',
                             !directions.left
                               ? 'cursor-not-allowed opacity-30'
-                              : 'hover:border-red-200 hover:bg-red-50 hover:text-red-600'
+                              : 'hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive'
                           )}
                           onClick={() => directions.left && handleQuickReview(false)}
                           disabled={!directions.left || isAnimatingRef.current}
@@ -1671,10 +1671,10 @@ export function ExpressionReviewer({
                           variant="outline"
                           size="lg"
                           className={cn(
-                            'h-16 w-16 rounded-full border-2 shadow-lg transition-all active:scale-95',
+                            'h-16 w-16 rounded-full border-2 shadow-sm transition-all active:scale-95',
                             !directions.right
                               ? 'cursor-not-allowed opacity-30'
-                              : 'hover:border-green-200 hover:bg-green-50 hover:text-green-600'
+                              : 'hover:border-emerald-600/40 hover:bg-emerald-600/5 hover:text-emerald-600'
                           )}
                           onClick={() => directions.right && handleQuickReview(true)}
                           disabled={!directions.right || isAnimatingRef.current}

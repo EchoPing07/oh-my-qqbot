@@ -806,7 +806,7 @@ export function EmojiUploadDialog({
                     className={`
                       flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
                       ${isSelected ? 'ring-2 ring-primary' : ''}
-                      ${complete ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : 'border-border hover:border-muted-foreground/50'}
+                      ${complete ? 'border-foreground/60' : 'border-border hover:border-muted-foreground/50'}
                     `}
                   >
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
@@ -823,7 +823,7 @@ export function EmojiUploadDialog({
                       </p>
                     </div>
                     {complete ? (
-                      <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
                     ) : (
                       <div className="h-5 w-5 shrink-0 rounded-full border-2 border-muted-foreground/30" />
                     )}
@@ -850,7 +850,7 @@ export function EmojiUploadDialog({
                     {isFileComplete(selectedFile) && (
                       <Badge
                         variant="outline"
-                        className="text-green-600 border-green-600"
+                        className="text-foreground border-foreground/40"
                       >
                         <Check className="h-3 w-3 mr-1" />
                         已完成

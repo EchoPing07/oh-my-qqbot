@@ -26,7 +26,7 @@ export const TASK_CONFIGS = [
   {
     key: 'planner' as const,
     title: '规划模型 (planner)',
-    description: '负责决定麦麦该什么时候回复',
+    description: '负责决定机器人该什么时候回复',
   },
   {
     key: 'utils' as const,

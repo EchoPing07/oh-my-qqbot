@@ -24,9 +24,9 @@ export interface MemoryProgressIndicatorProps {
 
 const TONE_RING_CLASS: Record<NonNullable<MemoryProgressIndicatorProps['tone']>, string> = {
   default: 'text-primary',
-  success: 'text-emerald-500',
-  warning: 'text-amber-500',
-  destructive: 'text-rose-500',
+  success: 'text-emerald-600',
+  warning: 'text-muted-foreground',
+  destructive: 'text-destructive',
   muted: 'text-muted-foreground',
 }
 

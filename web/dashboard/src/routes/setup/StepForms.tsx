@@ -34,7 +34,7 @@ export function CustomTokenForm({ token, onChange }: CustomTokenFormProps) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900 dark:border-yellow-900 dark:bg-yellow-950/30 dark:text-yellow-200">
+      <div className="rounded-lg border bg-muted/40 p-4 text-sm">
         <div className="flex gap-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" strokeWidth={2} fill="none" />
           <div className="space-y-1">
@@ -89,13 +89,13 @@ export function CustomTokenForm({ token, onChange }: CustomTokenFormProps) {
           {tokenValidation.rules.map((rule) => (
             <div key={rule.id} className="flex items-center gap-2 text-xs">
               {rule.passed ? (
-                <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-green-500" />
+                <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
               ) : (
                 <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
               )}
               <span
                 className={cn(
-                  rule.passed ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'
+                  rule.passed ? 'text-primary' : 'text-muted-foreground'
                 )}
               >
                 {rule.label}

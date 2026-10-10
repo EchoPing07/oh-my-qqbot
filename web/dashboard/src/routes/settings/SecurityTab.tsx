@@ -258,7 +258,7 @@ export function SecurityTab() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              <AlertTriangle className="text-primary h-5 w-5" />
               {t('settings.security.dialogTitle')}
             </DialogTitle>
             <DialogDescription>
@@ -278,10 +278,10 @@ export function SecurityTab() {
             </div>
 
             {/* 警告提示 */}
-            <div className="rounded-lg border border-yellow-200 dark:border-yellow-900 bg-yellow-50 dark:bg-yellow-950/30 p-3">
+            <div className="border-primary/20 bg-primary/5 rounded-lg border p-3">
               <div className="flex gap-2">
-                <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
+                <AlertTriangle className="text-primary mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div className="text-foreground text-sm space-y-1">
                   <p className="font-semibold">{t('settings.security.important')}</p>
                   <ul className="list-disc list-inside space-y-0.5 text-xs">
                     <li>{t('settings.security.tip1')}</li>
@@ -302,7 +302,7 @@ export function SecurityTab() {
             >
               {tokenCopied ? (
                 <>
-                  <Check className="h-4 w-4 text-green-500" />
+                  <Check className="text-primary h-4 w-4" />
                   {t('settings.security.copied')}
                 </>
               ) : (
@@ -366,7 +366,7 @@ export function SecurityTab() {
                   disabled={!currentToken}
                 >
                   {copied ? (
-                    <Check className="h-4 w-4 text-green-500" />
+                    <Check className="text-primary h-4 w-4" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -443,12 +443,12 @@ export function SecurityTab() {
                   {tokenValidation.rules.map((rule) => (
                     <div key={rule.id} className="flex items-center gap-2 text-sm">
                       {rule.passed ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        <CheckCircle2 className="text-primary flex-shrink-0 h-4 w-4" />
                       ) : (
-                        <XCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <XCircle className="text-muted-foreground flex-shrink-0 h-4 w-4" />
                       )}
                       <span className={cn(
-                        rule.passed ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'
+                        rule.passed ? 'text-primary font-medium' : 'text-muted-foreground'
                       )}>
                         {rule.label}
                       </span>
@@ -457,7 +457,7 @@ export function SecurityTab() {
                 </div>
                 {tokenValidation.isValid && (
                   <div className="mt-2 pt-2 border-t border-border">
-                    <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                    <div className="flex items-center gap-2 text-sm text-primary">
                       <Check className="h-4 w-4" />
                       <span className="font-medium">{t('settings.security.tokenValid')}</span>
                     </div>
@@ -477,9 +477,9 @@ export function SecurityTab() {
       </div>
 
       {/* 安全提示 */}
-      <div className="rounded-lg border border-yellow-200 dark:border-yellow-900 bg-yellow-50 dark:bg-yellow-950/30 p-3 sm:p-4">
-        <h4 className="text-sm sm:text-base font-semibold text-yellow-900 dark:text-yellow-200 mb-2">{t('settings.security.securityTip')}</h4>
-        <ul className="text-xs sm:text-sm text-yellow-800 dark:text-yellow-300 space-y-1 list-disc list-inside">
+      <div className="border-primary/20 bg-primary/5 rounded-lg border p-3 sm:p-4">
+        <h4 className="text-foreground mb-2 text-sm font-semibold sm:text-base">{t('settings.security.securityTip')}</h4>
+        <ul className="text-muted-foreground list-inside list-disc space-y-1 text-xs sm:text-sm">
           <li>{t('settings.security.securityTip1')}</li>
           <li>{t('settings.security.securityTip2')}</li>
           <li>{t('settings.security.securityTip3')}</li>

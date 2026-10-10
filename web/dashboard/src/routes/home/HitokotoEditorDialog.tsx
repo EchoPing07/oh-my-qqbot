@@ -18,7 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { generateId } from '@/lib/id'
 
-import type { CustomHitokoto, HitokotoSettings } from './hooks/useMaibotVersion'
+import type { CustomHitokoto, HitokotoSettings } from './hooks/useHomeHitokoto'
 
 interface HitokotoEditorDialogProps {
   initialSettings: HitokotoSettings

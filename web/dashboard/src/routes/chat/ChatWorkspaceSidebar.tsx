@@ -86,7 +86,7 @@ function ConversationItem({
                 'text-xs',
                 isVirtual
                   ? 'bg-secondary text-secondary-foreground'
-                  : 'bg-primary-gradient text-primary-foreground'
+                  : 'bg-foreground text-background'
               )}
             >
               <Icon className="h-5 w-5" />
@@ -191,7 +191,7 @@ function ObservedConversationItem({
             className={cn(
               'border-card absolute right-0 bottom-0 h-3 w-3 rounded-full border-2',
               status?.agentState === 'wait'
-                ? 'bg-blue-500'
+                ? 'bg-muted-foreground/40'
                 : status
                   ? 'bg-emerald-500'
                   : 'bg-muted-foreground/40'
@@ -272,7 +272,7 @@ export function ChatWorkspaceSidebar({
     <aside
       data-chat-workspace-sidebar="true"
       className={cn(
-        'bg-card/90 supports-backdrop-filter:bg-card/70 flex h-full shrink-0 flex-col border-r backdrop-blur',
+        'bg-card flex h-full shrink-0 flex-col border-r',
         'w-60 xl:w-64',
         className
       )}
@@ -295,7 +295,7 @@ export function ChatWorkspaceSidebar({
         </div>
       </div>
 
-      {/* 会话列表：「与麦麦聊天」固定在上方，其余聊天流在下方独立滚动 */}
+      {/* 会话列表：本地聊天固定在上方，其余聊天流在下方独立滚动 */}
       <nav
         aria-label={t('chat.sidebar.conversations')}
         data-chat-sidebar-list="true"

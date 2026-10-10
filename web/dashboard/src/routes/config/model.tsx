@@ -683,10 +683,10 @@ function ModelConfigPageContent() {
         
         {/* 空任务警告 */}
         {emptyTasks.length > 0 && (
-          <Alert variant="default" className="border-yellow-500/50 bg-yellow-500/10">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <Alert variant="default" className="border-destructive/30 bg-destructive/5">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
             <AlertDescription>
-              <strong className="text-yellow-600">以下任务未配置模型</strong>
+              <strong className="text-destructive">以下任务未配置模型</strong>
               <div className="mt-2 text-sm">
                 {emptyTasks.join('、')} 还未分配模型，这些功能将无法正常工作。
               </div>
@@ -701,7 +701,7 @@ function ModelConfigPageContent() {
           <GraduationCap className="h-4 w-4 text-primary" />
           <AlertDescription className="flex items-center justify-between">
             <span>
-              <strong className="text-primary">新手引导：</strong>不知道如何配置模型？点击这里开始学习如何为麦麦的组件分配模型。
+              <strong className="text-primary">新手引导：</strong>不知道如何配置模型？点击这里开始学习如何为机器人的组件分配模型。
             </span>
             <div className="ml-4 flex shrink-0 items-center gap-2">
             <Button variant="outline" size="sm">
@@ -1030,7 +1030,7 @@ function ModelConfigPageContent() {
                                 <span
                                   className={cn(
                                     'shrink-0 text-[10px]',
-                                    isSelected ? 'text-primary-foreground/70' : 'text-amber-600 dark:text-amber-400'
+                                    isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'
                                   )}
                                 >
                                   高级
@@ -1052,7 +1052,7 @@ function ModelConfigPageContent() {
                               isSelected
                                 ? 'text-primary-foreground/75'
                                 : isConfigured
-                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  ? 'text-primary'
                                   : 'text-muted-foreground'
                             )}
                           >
@@ -1247,7 +1247,7 @@ function ModelConfigPageContent() {
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div>
                           <span className="text-muted-foreground">测试状态</span>
-                          <p className={selectedModelTestResult.success ? 'font-medium text-green-600' : 'font-medium text-destructive'}>
+                          <p className={selectedModelTestResult.success ? 'font-medium text-primary' : 'font-medium text-destructive'}>
                             {selectedModelTestResult.success ? '通过' : '未通过'}
                           </p>
                         </div>
@@ -1261,7 +1261,7 @@ function ModelConfigPageContent() {
                           <>
                             <div>
                               <span className="text-muted-foreground">工具调用</span>
-                              <p className={selectedModelTestResult.tool_call_ok ? 'font-medium text-green-600' : 'font-medium text-destructive'}>
+                              <p className={selectedModelTestResult.tool_call_ok ? 'font-medium text-primary' : 'font-medium text-destructive'}>
                                 {selectedModelTestResult.tool_call_ok ? '已返回测试工具调用' : '未返回测试工具调用'}
                               </p>
                             </div>
@@ -1386,7 +1386,7 @@ function ModelConfigPageContent() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               删除提供商会同时移除关联模型
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -2056,7 +2056,7 @@ function ModelConfigPageContent() {
             )}
 
             {advancedModelSettingsVisible && (
-              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10 sm:space-y-4 sm:p-4">
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3 sm:space-y-4 sm:p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-1">
                     <Label htmlFor="force_stream_mode" className="cursor-pointer">强制流式输出模式</Label>
@@ -2080,7 +2080,7 @@ function ModelConfigPageContent() {
                       发送 temperature 参数
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      关闭后不发送由 MaiBot 管理的模型温度和任务温度
+                      关闭后不发送由主程序管理的模型温度和任务温度
                     </p>
                   </div>
                   <Switch
@@ -2187,9 +2187,9 @@ function ModelConfigPageContent() {
                     <span className="text-xs text-muted-foreground tabular-nums">2</span>
                   </div>
                   {editingModel.temperature > 1 && (
-                    <Alert className="bg-amber-500/10 border-amber-500/20 [&>svg+div]:translate-y-0">
-                      <AlertTriangle className="h-4 w-4 text-amber-500" />
-                      <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
+                    <Alert className="border-border bg-muted/30 [&>svg+div]:translate-y-0">
+                      <AlertTriangle className="h-4 w-4 text-primary" />
+                      <AlertDescription className="text-xs text-muted-foreground">
                         温度 &gt; 1 会产生更随机、更不可预测的输出，请谨慎使用
                       </AlertDescription>
                     </Alert>
@@ -2385,7 +2385,7 @@ function ModelConfigPageContent() {
             <AlertDialogCancel onClick={embeddingWarning.cancel}>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void embeddingWarning.confirm()}
-              className="bg-amber-600 hover:bg-amber-700"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               确认更换
             </AlertDialogAction>

@@ -1,8 +1,8 @@
 /**
  * useHomeHitokoto —— 首页一言领域 hook（页面逻辑下沉）。
  *
- * MaiBot 版本兼容检查与上游 GitHub release 拉取已随 MaiBot 特色系统移除，
- * 本 hook 只保留一言（hitokoto / hitokotoLoading + fetchHitokoto）。
+ * 本 hook 只提供一言数据（hitokoto / hitokotoLoading / fetchHitokoto）
+ * 与本地一言设置的读写（hitokotoSettings / saveHitokotoSettings）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -73,7 +73,7 @@ function loadHitokotoIndex(): number {
   return Number.isFinite(value) && value >= 0 ? value : 0
 }
 
-export function useMaibotVersion() {
+export function useHomeHitokoto() {
   const { t } = useTranslation()
   const [hitokoto, setHitokoto] = useState<{ hitokoto: string; from: string } | null>(null)
   const [hitokotoLoading, setHitokotoLoading] = useState(true)

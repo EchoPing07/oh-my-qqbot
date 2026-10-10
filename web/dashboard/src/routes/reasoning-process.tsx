@@ -214,10 +214,10 @@ function formatLlmRequestStatus(status?: string): string {
 
 function getLlmRequestStatusStyle(status?: string): string {
   if (status === 'succeeded' || status === 'succeeded_after_retry') {
-    return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    return 'border-border bg-muted/40 text-foreground'
   }
   if (status === 'retrying' || status === 'switching_model') {
-    return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    return 'border-border bg-muted/40 text-muted-foreground'
   }
   return 'border-destructive/30 bg-destructive/10 text-destructive'
 }
@@ -959,7 +959,7 @@ export function ReasoningProcessPage({
         size="sm"
         className="h-9 shrink-0 gap-1.5 sm:h-10"
         onClick={() => navigate({ to: returnTo })}
-        title="返回麦麦观察"
+        title="返回观察"
       >
         <ArrowLeft className="h-4 w-4" />
         返回观察
@@ -1337,7 +1337,7 @@ export function ReasoningProcessPage({
                             <div className="flex min-w-0 items-start gap-1.5">
                               {item.has_behavior_choice_insert && (
                                 <span
-                                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-violet-500"
+                                  className="bg-primary mt-1.5 h-2 w-2 shrink-0 rounded-full"
                                   title="包含行为表现参考"
                                   aria-label="包含行为表现参考"
                                 />
@@ -1708,7 +1708,7 @@ export function ReasoningProcessPage({
                             title="推理过程 HTML 预览"
                             src={htmlPreviewUrl}
                             sandbox=""
-                            className="h-[58vh] min-h-[320px] w-full border-0 bg-white sm:h-[70vh] sm:min-h-[420px]"
+                            className="h-[58vh] min-h-[320px] w-full border-0 bg-background sm:h-[70vh] sm:min-h-[420px]"
                           />
                         ) : (
                           <div className="text-muted-foreground flex min-h-[360px] items-center justify-center text-sm">

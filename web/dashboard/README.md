@@ -22,7 +22,9 @@
   字段差异逐个适配；
 - **移除插件系统**：插件市场/插件配置/插件镜像/插件 WebUI 扩展页与相关 API 客户端全部删除；
 - **移除 Electron 打包分支**：electron/ 目录、electron-vite 配置、主进程桥接代码；
-- **i18n**：zh-CN 为主（fallback zh），保留 en。
+- **视觉重写**：设计语言改为「主黑白灰、辅红、线条风」——移除 MaiBot 的主题系统
+  （未来复古/千禧风格、背景图层、新手引导、问卷调查），重写设计 token、登录页与布局框架；
+- **i18n**：zh-CN 为主（fallback zh），保留 en，文案去 MaiBot 品牌化。
 
 原项目代码采用 **GNU Affero General Public License v3（AGPLv3）** 授权，
 本目录保留其 [`LICENSE`](./LICENSE) 文件与全部版权声明；
@@ -45,7 +47,7 @@ npm run typecheck  # 仅类型检查
 - **首页概览** — 运行状态、存储占用、快捷操作、公告卡片
 - **聊天** — WebUI 内置聊天（虚拟平台注入）+ 嵌入式聊天
 - **聊天管理** — 会话列表浏览
-- **监控** — 麦麦观察（maisaka monitor / WS `maisaka_monitor` 域）
+- **监控** — 运行观察（maisaka monitor / WS `maisaka_monitor` 域）
 - **资源** — 表情包 / 表达方式 / 黑话 / 行为学习 / 长期记忆（知识库 + 图谱）
 - **人物管理**
 - **日志** — 终端风格日志（WS `logs` 域实时流）、推理过程、详细统计

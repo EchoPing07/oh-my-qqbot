@@ -53,14 +53,14 @@ function getUpdateStatus(plugin: IncompatiblePluginNotice) {
     return {
       icon: CircleCheck,
       label: `可更新至 v${plugin.update_version}`,
-      className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      className: 'border-primary/40 bg-primary/10 text-primary',
     }
   }
   if (plugin.update_status === 'check_failed') {
     return {
       icon: CircleAlert,
       label: '兼容更新检查失败',
-      className: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      className: 'bg-muted text-muted-foreground border',
     }
   }
   if (plugin.update_status === 'not_found') {
@@ -353,16 +353,10 @@ export function UpdateNoticeDialog() {
           <DialogHeader>
             {manualTarget ? (
               <DialogTitle className="flex flex-col items-start gap-2">
-                <span
-                  className="text-2xl leading-tight font-bold tracking-wide"
-                  style={{ color: 'var(--retro-ink)' }}
-                >
-                  {manualTarget === 'console' ? 'CONSOLE 版本' : 'MAIBOT 版本'}
+                <span className="text-foreground text-2xl leading-tight font-bold tracking-wide">
+                  {manualTarget === 'console' ? 'CONSOLE 版本' : '主程序版本'}
                 </span>
-                <span
-                  className="text-4xl leading-none font-black tracking-tight"
-                  style={{ color: 'var(--retro-rust)' }}
-                >
+                <span className="text-primary text-4xl leading-none font-black tracking-tight">
                   {activeManualVersion ?? currentManualVersion}
                 </span>
               </DialogTitle>

@@ -1,5 +1,5 @@
 /**
- * MaiSaka 实时监控 WebSocket 客户端
+ * 运行时实时监控 WebSocket 客户端（maisaka monitor）
  *
  * 订阅 maisaka_monitor 主题，接收推理引擎各阶段的实时事件。
  */
@@ -362,7 +362,7 @@ class MaisakaMonitorClient {
         try {
           listener(event)
         } catch (error) {
-          console.error('MaiSaka 监控事件监听器执行失败:', error)
+          console.error('运行时监控事件监听器执行失败:', error)
         }
       })
     })

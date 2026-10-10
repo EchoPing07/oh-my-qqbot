@@ -171,15 +171,15 @@ const legacyModuleDisplayNames: Record<string, string> = {
   image: '图片',
   image_cache_cleanup: '图片缓存清理',
   local_storage: '本地存储',
-  maisaka_monitor_event_store: '麦麦监控事件',
-  maisaka_runtime: 'MaiSaka',
+  maisaka_monitor_event_store: '机器人监控事件',
+  maisaka_runtime: '主程序运行时',
   maisaka_turn_scheduler: '读空气',
   model_utils: '模型工具',
   person_info: '人物',
   'plugin.github.sengokucola.statistics-chart-plugin': '统计图表插件',
   'plugin.local.replyer-regex-guard': '回复正则保护插件',
-  'plugin.omb-team.mai-statstic-plugin': 'Mai统计插件',
-  'plugin.omb-team.omb-helper': '麦麦助手插件',
+  'plugin.omb-team.mai-statstic-plugin': '统计插件',
+  'plugin.omb-team.omb-helper': '助手插件',
   'plugin.omb-team.snowluma-adapter': 'SnowLuma适配器',
   'plugin.self_identity_plugin': '自我认知插件',
   'plugin.sengokucola.deepseek-thinking-marker': 'DeepSeek思考标记插件',
@@ -298,13 +298,13 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
       case 'DEBUG':
         return 'text-muted-foreground'
       case 'INFO':
-        return 'text-blue-500 dark:text-blue-400'
+        return 'text-foreground'
       case 'WARNING':
-        return 'text-yellow-600 dark:text-yellow-500'
+        return 'text-foreground font-semibold'
       case 'ERROR':
-        return 'text-red-600 dark:text-red-500'
+        return 'text-destructive'
       case 'CRITICAL':
-        return 'text-red-700 dark:text-red-400 font-bold'
+        return 'text-destructive font-bold'
       default:
         return 'text-foreground'
     }
@@ -628,7 +628,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                 <span
                   className={cn(
                     'h-2 w-2 rounded-full',
-                    connected ? 'animate-pulse bg-green-500' : 'bg-red-500'
+                    connected ? 'animate-pulse bg-emerald-500' : 'bg-destructive'
                   )}
                 />
                 {connected ? '已连接' : '未连接'}
@@ -809,25 +809,21 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
 
       {/* 日志终端 - 占据剩余所有空间 */}
       <div className="min-h-0 flex-1 px-2 pb-2 sm:px-3 sm:pb-3 lg:px-4 lg:pt-2 lg:pb-4">
-        <Card
-          className="h-full overflow-hidden border-[#24170f]/70 dark:border-[#1d120c]/80"
-          style={{ backgroundColor: '#633312' }}
-        >
+        <Card className="h-full overflow-hidden">
           <div
             ref={parentRef}
             className={cn(
-              'h-full overflow-auto selection:bg-[#5a3924] selection:text-[#fff2df]',
+              'h-full overflow-auto',
               // 自定义滚动条样式
               '[&::-webkit-scrollbar]:w-2.5',
               '[&::-webkit-scrollbar-track]:bg-transparent',
               '[&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full',
               '[&::-webkit-scrollbar-thumb:hover]:bg-border/80'
             )}
-            style={{ backgroundColor: '#211607' }}
           >
             <div
               className={cn(
-                'relative p-2 font-mono selection:bg-[#5a3924] selection:text-[#fff2df] sm:p-3',
+                'relative p-2 font-mono sm:p-3',
                 fontSizeConfig[fontSize].class
               )}
               style={{
@@ -836,7 +832,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
               }}
             >
               {filteredLogs.length === 0 ? (
-                <div className="py-8 text-center text-xs text-gray-500 sm:text-sm dark:text-gray-600">
+                <div className="text-muted-foreground py-8 text-center text-xs sm:text-sm">
                   暂无日志数据
                 </div>
               ) : (
@@ -861,7 +857,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                       <div className="flex flex-col gap-0.5 sm:hidden">
                         {/* 第一行：时间戳和级别 */}
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-gray-500 dark:text-gray-600">
+                          <span className="text-muted-foreground text-[10px]">
                             {timestampText}
                           </span>
                           <span
@@ -874,7 +870,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                         <div
                           className={cn(
                             'truncate text-[10px]',
-                            !moduleTextStyle && 'text-cyan-400 dark:text-cyan-500'
+                            !moduleTextStyle && 'text-foreground'
                           )}
                           style={moduleTextStyle}
                         >
@@ -883,8 +879,8 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                         {/* 第三行：消息内容 */}
                         <div
                           className={cn(
-                            'text-[10px] break-words whitespace-pre-wrap',
-                            !moduleTextStyle && 'text-gray-300 dark:text-gray-400'
+                            'text-muted-foreground text-[10px] break-words whitespace-pre-wrap',
+                            !moduleTextStyle && 'text-foreground/80'
                           )}
                           style={moduleTextStyle}
                         >
@@ -897,7 +893,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                         {/* 时间戳 */}
                         <span
                           className={cn(
-                            'flex-shrink-0 text-gray-500 dark:text-gray-600',
+                            'text-muted-foreground flex-shrink-0',
                             logColumnLayout.timestampClass
                           )}
                           style={{ width: timestampWidth }}
@@ -922,7 +918,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                           className={cn(
                             'flex-shrink-0 truncate',
                             logColumnLayout.moduleClass,
-                            !moduleTextStyle && 'text-cyan-400 dark:text-cyan-500'
+                            !moduleTextStyle && 'text-foreground'
                           )}
                           style={{ ...moduleTextStyle, width: moduleWidth }}
                         >
@@ -932,8 +928,8 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                         {/* 消息内容 */}
                         <span
                           className={cn(
-                            'flex-1 break-words whitespace-pre-wrap',
-                            !moduleTextStyle && 'text-gray-300 dark:text-gray-400'
+                            'text-muted-foreground flex-1 break-words whitespace-pre-wrap',
+                            !moduleTextStyle && 'text-foreground/80'
                           )}
                           style={moduleTextStyle}
                         >
@@ -961,10 +957,8 @@ export function LogViewerPage({ defaultTab }: LogViewerPageProps) {
     () => defaultTab ?? loadStoredLogViewerTab()
   )
   const [topbarTabsRoot, setTopbarTabsRoot] = useState<HTMLElement | null>(null)
-  // 千禧顶栏始终用图标模式，初始即取紧凑态，避免先渲染完整文字再收窄造成顶栏跳动。
-  const [topbarTabsCompact, setTopbarTabsCompact] = useState(
-    () => document.documentElement.dataset.dashboardStyle === 'millennium'
-  )
+  // 初始取紧凑态，避免先渲染完整文字再收窄造成顶栏跳动。
+  const [topbarTabsCompact, setTopbarTabsCompact] = useState(false)
   const topbarTabsCompactRef = useRef(false)
   const [reasoningToolbarVisible, setReasoningToolbarVisible] = useState(activeTab === 'reasoning')
   const [showSwitchHint, setShowSwitchHint] = useState(() =>
@@ -1014,11 +1008,6 @@ export function LogViewerPage({ defaultTab }: LogViewerPageProps) {
         }
 
         const rootRect = topbarTabsRoot.getBoundingClientRect()
-        // 千禧顶栏的页签参与正常布局，保持图标模式，不使用绝对定位布局的间距判定。
-        if (document.documentElement.dataset.dashboardStyle === 'millennium') {
-          setTopbarTabsCompact(true)
-          return
-        }
         const measureRect = measureEl.getBoundingClientRect()
         const workspaceRect = workspaceTabs.getBoundingClientRect()
         const workspaceMeasureRect = workspaceTabsMeasure.getBoundingClientRect()

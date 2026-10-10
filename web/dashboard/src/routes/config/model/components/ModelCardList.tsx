@@ -35,7 +35,7 @@ function getModelTestStatus(result: ModelTestResult | undefined, isTesting: bool
   if (isTesting) {
     return {
       description: '正在测试模型能力',
-      className: 'border-amber-500 animate-pulse',
+      className: 'border-primary animate-pulse',
     }
   }
 
@@ -55,13 +55,13 @@ function getModelTestStatus(result: ModelTestResult | undefined, isTesting: bool
       description: `${summary}${
         result.latency_ms != null ? `，耗时 ${(result.latency_ms / 1000).toFixed(2)}s` : ''
       }`,
-      className: 'border-green-500',
+      className: 'border-primary',
     }
   }
 
   return {
     description: result.error || '模型能力测试未通过',
-    className: 'border-red-500',
+    className: 'border-destructive',
   }
 }
 
@@ -107,8 +107,8 @@ export const ModelCardList = React.memo(function ModelCardList({
                   <span
                     className={`block h-3 w-3 shrink-0 rounded-full border ${
                       used
-                        ? 'border-green-500 bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]'
-                        : 'border-green-700/40 bg-green-950/20'
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/40 bg-muted'
                     }`}
                     title={used ? '已使用' : '未使用'}
                     aria-label={used ? '已使用' : '未使用'}
@@ -170,8 +170,8 @@ export const ModelCardList = React.memo(function ModelCardList({
                   <span
                     className={`block h-3 w-3 rounded-full border ${
                       model.visual
-                        ? 'border-green-500 bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]'
-                        : 'border-green-700/40 bg-green-950/20'
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/40 bg-muted'
                     }`}
                     title={model.visual ? '已启用视觉' : '未启用视觉'}
                     aria-label={model.visual ? '已启用视觉' : '未启用视觉'}

@@ -24,7 +24,7 @@ const EntityNode = memo(({ data }: { data: FlowNodeData }) => {
     ? 'line-clamp-2 max-w-[11.5rem] whitespace-normal break-words text-xs font-semibold leading-snug text-white'
     : 'max-w-[9rem] truncate text-xs font-semibold leading-tight text-white'
   return (
-    <div className={`flex cursor-grab items-center justify-center border border-blue-300/70 bg-blue-500/90 text-center shadow-[0_0_22px_rgba(37,99,235,0.26)] backdrop-blur active:cursor-grabbing ${evidenceClassName}`}>
+    <div className={`flex cursor-grab items-center justify-center border border-border bg-card text-center shadow-sm active:cursor-grabbing ${evidenceClassName}`}>
       <Handle className="opacity-0" type="target" position={Position.Top} />
       <div className={textClassName} title={data.content}>
         {data.label}
@@ -44,7 +44,7 @@ const ParagraphNode = memo(({ data }: { data: FlowNodeData }) => {
     ? 'line-clamp-2 max-w-[11.5rem] whitespace-normal break-words text-xs font-medium leading-snug text-white'
     : 'max-w-[8rem] truncate text-[11px] font-medium leading-tight text-white'
   return (
-    <div className={`flex cursor-grab items-center justify-center border border-emerald-300/70 bg-emerald-500/90 text-center shadow-[0_0_18px_rgba(16,185,129,0.22)] backdrop-blur active:cursor-grabbing ${evidenceClassName}`}>
+    <div className={`flex cursor-grab items-center justify-center border border-border bg-muted text-center shadow-sm active:cursor-grabbing ${evidenceClassName}`}>
       <Handle className="opacity-0" type="target" position={Position.Top} />
       <div className={textClassName} title={data.content}>
         {data.label}
@@ -64,7 +64,7 @@ const RelationNode = memo(({ data }: { data: FlowNodeData }) => {
     ? 'line-clamp-2 max-w-[11.5rem] whitespace-normal break-words text-xs font-medium leading-snug text-white'
     : 'max-w-[9rem] truncate text-[11px] font-medium leading-tight text-white'
   return (
-    <div className={`flex cursor-grab items-center justify-center border border-orange-300/70 bg-orange-500/90 text-center shadow-[0_0_18px_rgba(249,115,22,0.24)] backdrop-blur active:cursor-grabbing ${evidenceClassName}`}>
+    <div className={`flex cursor-grab items-center justify-center border border-primary/40 bg-primary text-center shadow-sm active:cursor-grabbing ${evidenceClassName}`}>
       <Handle className="opacity-0" type="target" position={Position.Top} />
       <div className={textClassName} title={data.content}>
         {data.label}
@@ -242,7 +242,7 @@ function calculateEvidenceLayout(nodes: GraphNode[], edges: GraphEdge[]): { node
         stroke: strokeColor,
       },
       labelStyle: {
-        fill: '#334155',
+        fill: '#404040',
         fontSize: 11,
         fontWeight: 600,
       },
@@ -330,7 +330,7 @@ function calculateLayout(nodes: GraphNode[], edges: GraphEdge[]): { nodes: FlowN
         stroke: strokeColor,
       },
       labelStyle: {
-        fill: '#334155',
+        fill: '#404040',
         fontSize: 11,
         fontWeight: 600,
       },

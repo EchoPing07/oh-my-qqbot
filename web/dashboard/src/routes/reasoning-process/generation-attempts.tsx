@@ -39,9 +39,9 @@ function formatLlmRequestStatus(status?: string): string {
 }
 function getLlmRequestStatusStyle(status?: string): string {
   if (status === 'succeeded' || status === 'completed' || status === 'succeeded_after_retry')
-    return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+    return 'border-border bg-muted/40 text-foreground'
   if (status === 'retrying' || status === 'switching_model')
-    return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+    return 'border-border bg-muted/40 text-muted-foreground'
   return 'border-destructive/30 bg-destructive/10 text-destructive'
 }
 
@@ -124,9 +124,9 @@ export function getProviderItemPayload(item: Record<string, unknown>, itemType: 
 
 export function GenerationTraceCard({ trace }: { trace: GenerationTraceSnapshot }) {
   return (
-    <section className="space-y-2 rounded-md border border-violet-500/30 bg-violet-500/[0.03] p-2.5 sm:p-3">
+    <section className="bg-muted/20 space-y-2 rounded-md border p-2.5 sm:p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Code2 className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+        <Code2 className="text-muted-foreground h-4 w-4" />
         <span className="text-sm font-semibold">Generation Trace</span>
         <Badge variant="outline">{trace.status || 'unknown'}</Badge>
         <Badge variant="secondary">{trace.output_item_ids.length} Items</Badge>
@@ -164,9 +164,9 @@ export function ProviderResponseTimeline({ response }: { response: ProviderRespo
   const totalTokens = usage && typeof usage.total_tokens === 'number' ? usage.total_tokens : null
 
   return (
-    <section className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/[0.03] p-2.5 sm:p-3">
+    <section className="bg-muted/20 space-y-2 rounded-md border p-2.5 sm:p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Code2 className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+        <Code2 className="text-muted-foreground h-4 w-4" />
         <span className="text-sm font-semibold">Responses 原生输出</span>
         <Badge variant="secondary">{outputItems.length} Items</Badge>
         {response.status !== undefined && (

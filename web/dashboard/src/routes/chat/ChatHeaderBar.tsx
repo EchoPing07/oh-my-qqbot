@@ -35,14 +35,14 @@ export function ChatHeaderBar({
   const botAvatarUrl = useResolvedAvatarUrl('qq', activeTab?.sessionInfo.bot_qq)
 
   return (
-    <header className="bg-card/85 supports-backdrop-filter:bg-card/65 relative z-1 shrink-0 border-b backdrop-blur">
+    <header className="bg-card relative z-1 shrink-0 border-b">
       <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex min-w-0 items-center gap-3">
           {/* 头像 + 在线状态指示点 */}
           <div className="relative shrink-0">
             <Avatar className="h-10 w-10 ring-1 ring-border/60 sm:h-11 sm:w-11">
               {botAvatarUrl && <AvatarImage src={botAvatarUrl} alt={`${botDisplayName} 的头像`} className="object-cover" />}
-              <AvatarFallback className="bg-primary-gradient text-primary-foreground">
+              <AvatarFallback className="bg-foreground text-background">
                 <Bot className="h-5 w-5" />
               </AvatarFallback>
             </Avatar>
@@ -50,7 +50,7 @@ export function ChatHeaderBar({
               aria-hidden="true"
               className={cn(
                 'absolute right-0 bottom-0 h-3 w-3 rounded-full border-2 border-card transition-colors',
-                connected ? 'bg-emerald-500' : isConnecting ? 'bg-amber-500' : 'bg-muted-foreground/60'
+                connected ? 'bg-emerald-500' : isConnecting ? 'bg-muted-foreground/50' : 'bg-muted-foreground/60'
               )}
             />
           </div>
@@ -73,7 +73,7 @@ export function ChatHeaderBar({
                 </>
               ) : (
                 <>
-                  <WifiOff className="h-3 w-3 text-rose-500" />
+                  <WifiOff className="text-destructive h-3 w-3" />
                   <span>{t('chat.status.disconnected')}</span>
                 </>
               )}

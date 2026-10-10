@@ -324,31 +324,31 @@ export function JargonManagementPage() {
       value: 'confirmed_jargon',
       label: '已确认黑话',
       count: stats.confirmed_jargon,
-      className: 'text-green-600',
+      className: 'text-emerald-600',
     },
     {
       value: 'confirmed_not_jargon',
       label: '无黑话',
       count: stats.confirmed_not_jargon,
-      className: 'text-gray-500',
+      className: 'text-muted-foreground',
     },
     {
       value: 'manual_jargon',
       label: '手动黑话',
       count: stats.manual_jargon,
-      className: 'text-amber-600',
+      className: 'text-foreground',
     },
     {
       value: 'global_count',
       label: '全局黑话',
       count: stats.global_count,
-      className: 'text-blue-600',
+      className: 'text-primary',
     },
     {
       value: 'complete_count',
       label: '推断完成',
       count: stats.complete_count,
-      className: 'text-purple-600',
+      className: 'text-muted-foreground',
     },
   ]
   const activeSummary =

@@ -138,7 +138,7 @@ export function KeyValueEditor({
                     <span className="truncate max-w-[150px]">{jsonError}</span>
                   </div>
                 ) : editingJsonText.trim() && (
-                  <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                  <div className="text-primary flex items-center gap-1 text-xs">
                     <Check className="h-3 w-3" />
                     <span>有效</span>
                   </div>

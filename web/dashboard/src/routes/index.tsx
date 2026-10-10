@@ -34,10 +34,9 @@ import { useBotStatus } from './home/hooks/useBotStatus'
 import { useDashboardData } from './home/hooks/useDashboardData'
 import { useFeatureStatus } from './home/hooks/useFeatureStatus'
 import { useLocalCacheMetrics } from './home/hooks/useLocalCacheMetrics'
-import { useMaibotVersion } from './home/hooks/useMaibotVersion'
+import { useHomeHitokoto } from './home/hooks/useHomeHitokoto'
 import { HitokotoEditorDialog } from './home/HitokotoEditorDialog'
 import { HomeCardManager, type HomeCardDefinition } from './home/HomeCardManager'
-import { NewsCard } from './home/NewsCard'
 import { useQuickShortcuts } from './home/hooks/useQuickShortcuts'
 import { useReviewStats } from './home/hooks/useReviewStats'
 import {
@@ -70,18 +69,22 @@ export function IndexPage() {
 // 内部实现组件
 type BotRuntimeState = 'loading' | 'running' | 'stopped' | 'unknown'
 
-function BotActivityOrbit({ state }: { state: BotRuntimeState }) {
+import { NewsCard } from './home/NewsCard'
+
+// 运行状态指示方块：线条风的状态点，颜色随运行态切换
+function BotRuntimeDot({ state }: { state: BotRuntimeState }) {
   return (
-    <div
+    <span
       aria-hidden="true"
-      data-omb-activity-orbit="true"
+      data-omb-runtime-dot="true"
       data-state={state}
-      className="relative h-[72px] w-[72px] shrink-0"
-    >
-      <span />
-      <span />
-      <span />
-    </div>
+      className={cn(
+        'h-3 w-3 shrink-0',
+        state === 'running' && 'bg-primary',
+        state === 'stopped' && 'bg-destructive',
+        state !== 'running' && state !== 'stopped' && 'bg-muted-foreground/40'
+      )}
+    />
   )
 }
 
@@ -171,11 +174,6 @@ function BotStatusFlipCard({
           animate={{ opacity: prefersReducedMotion && isFlipped ? 0 : 1 }}
           transition={{ duration: prefersReducedMotion ? 0.12 : 0 }}
         >
-          <span
-            aria-hidden="true"
-            data-omb-status-glow="true"
-            className="pointer-events-none absolute -inset-4 z-0 rounded-[1.5rem]"
-          />
           <Card data-omb-status-surface="true" className={cardClassName}>
             <CardContent
               data-home-titleless-content="true"
@@ -184,7 +182,7 @@ function BotStatusFlipCard({
             >
               <div className="space-y-2">
                 <div data-omb-runtime-status="true" className="flex items-center gap-2.5">
-                  <BotActivityOrbit state={botRuntimeState} />
+                  <BotRuntimeDot state={botRuntimeState} />
                   <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
                     <div
                       data-omb-runtime-label="true"
@@ -343,7 +341,7 @@ function IndexPageContent() {
     hitokotoSettings,
     fetchHitokoto,
     saveHitokotoSettings,
-  } = useMaibotVersion()
+  } = useHomeHitokoto()
 
   const [isReviewerOpen, setIsReviewerOpen] = useState(false)
   const [hitokotoEditorOpen, setHitokotoEditorOpen] = useState(false)
@@ -381,7 +379,6 @@ function IndexPageContent() {
     fetchFeatureStatus()
     fetchLocalCacheStats()
     fetchReviewStats()
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [
     fetchDashboardData,
     fetchHitokoto,
@@ -548,7 +545,7 @@ function IndexPageContent() {
                       {shortcut.badge && (
                         <span
                           data-quick-action-badge="true"
-                          className="ml-1 shrink-0 rounded-full bg-orange-500 px-1.5 py-0.5 text-xs text-white"
+                          className="bg-primary text-primary-foreground ml-1 shrink-0 rounded-full px-1.5 py-0.5 text-xs"
                         >
                           {shortcut.badge}
                         </span>
@@ -944,21 +941,6 @@ function IndexPageContent() {
             </span>
             <span className="text-base">V{APP_VERSION}</span>
           </button>
-          <span
-            aria-hidden="true"
-            data-home-version-stripes="true"
-            className="ml-auto hidden min-w-24 flex-1 basis-40"
-          >
-            <svg
-              data-home-version-spectrum="true"
-              viewBox="0 0 1100 180"
-              preserveAspectRatio="none"
-            >
-              <path data-spectrum-line="green" d="M0 84 H740 C850 84 880 18 1010 18 H1100" />
-              <path data-spectrum-line="gold" d="M0 90 H1100" />
-              <path data-spectrum-line="orange" d="M0 96 H740 C850 96 880 162 1010 162 H1100" />
-            </svg>
-          </span>
         </div>
 
         <HomeCardManager

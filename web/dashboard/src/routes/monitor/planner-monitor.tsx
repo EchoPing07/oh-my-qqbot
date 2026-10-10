@@ -316,7 +316,7 @@ export function PlannerMonitor({ autoRefresh, refreshKey }: PlannerMonitorProps)
                           {plan.action_types && plan.action_types.length > 0 && (
                             <div className="flex flex-wrap gap-1 mb-2">
                               {plan.action_types.map((type, idx) => (
-                                <Badge key={idx} variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                                <Badge key={idx} variant="outline" className="text-xs">
                                   {type}
                                 </Badge>
                               ))}
@@ -406,7 +406,7 @@ export function PlannerMonitor({ autoRefresh, refreshKey }: PlannerMonitorProps)
               计划执行详情
             </DialogTitle>
             <DialogDescription>
-              查看麦麦的详细计划推理过程和执行动作
+              查看机器人的详细计划推理过程和执行动作
             </DialogDescription>
           </DialogHeader>
 

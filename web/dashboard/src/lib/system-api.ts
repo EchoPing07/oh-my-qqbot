@@ -9,7 +9,7 @@
 import { ApiError, backendApi } from '@/lib/http'
 
 /**
- * 重启麦麦主程序（Go 后端暂未提供 /system/restart；返回失败结果由 UI 提示）
+ * 重启机器人主程序（Go 后端暂未提供 /system/restart；返回失败结果由 UI 提示）
  */
 export async function restartMaiBot(): Promise<{ success: boolean; message: string }> {
   try {
@@ -26,7 +26,7 @@ export async function restartMaiBot(): Promise<{ success: boolean; message: stri
 }
 
 /**
- * 检查麦麦运行状态
+ * 检查机器人运行状态
  */
 export async function getMaiBotStatus(): Promise<{
   running: boolean

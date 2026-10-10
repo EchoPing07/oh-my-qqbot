@@ -37,7 +37,6 @@ import { cn } from '@/lib/utils'
 type PluginHomeCardWidth = 'small' | 'medium' | 'large' | 'wide' | 'full'
 
 const HOME_CARD_LAYOUT_STORAGE_KEY = 'omb-home-card-layout-v1'
-const LEGACY_HITOKOTO_STYLE_STORAGE_KEY = 'omb-home-hitokoto-style'
 const HOME_CARD_LOW_ROW_HEIGHT = 192
 const HOME_CARD_HIGH_ROW_HEIGHT = 360
 const HOME_CARD_GRID_GAP = 16
@@ -63,10 +62,10 @@ const DEFAULT_BUILTIN_CARD_ORDER = [
 type HomeCardSource = 'builtin'
 type HomeCardRowMode = 'low' | 'high'
 type HomeCardCategory = 'status' | 'statistics' | 'analysis'
-type HomeCardStyle = 'default' | 'orange' | 'borderless'
+type HomeCardStyle = 'default' | 'borderless'
 
-function defaultCardStyle(cardId: string): HomeCardStyle {
-  return cardId === 'builtin:hitokoto' ? 'orange' : 'default'
+function defaultCardStyle(_cardId: string): HomeCardStyle {
+  return 'default'
 }
 
 export interface HomeCardDefinition {
@@ -118,13 +117,8 @@ function loadHomeCardLayout(): HomeCardLayout {
     const order = Array.isArray(parsed.order)
       ? parsed.order.filter((item: unknown): item is string => typeof item === 'string')
       : []
+    // 旧版 hitokoto 卡的 orange 样式已随线条风改版移除，历史持久化值统一回落 default。
     const styles = normalizeCardStyles(parsed.styles)
-    if (
-      styles['builtin:hitokoto'] === undefined &&
-      localStorage.getItem(LEGACY_HITOKOTO_STYLE_STORAGE_KEY) === 'orange'
-    ) {
-      styles['builtin:hitokoto'] = 'orange'
-    }
     return {
       order: migrateHomeCardOrder(order),
       hidden: Array.isArray(parsed.hidden)
@@ -186,7 +180,7 @@ function normalizeCardWidths(value: unknown): Record<string, PluginHomeCardWidth
 
 function normalizeCardStyles(value: unknown): Record<string, HomeCardStyle> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  const validStyles = new Set<HomeCardStyle>(['default', 'orange', 'borderless'])
+  const validStyles = new Set<HomeCardStyle>(['default', 'borderless'])
   return Object.entries(value).reduce<Record<string, HomeCardStyle>>((result, [key, style]) => {
     if (typeof style === 'string' && validStyles.has(style as HomeCardStyle)) {
       result[key] = style as HomeCardStyle
@@ -405,7 +399,7 @@ function SortableHomeCard({
       data-home-card-variant={card.variant ?? 'card'}
     >
       {editing && (
-        <div className="bg-background/95 absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur">
+        <div className="bg-background absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md border p-1 shadow-sm">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -761,7 +755,7 @@ export function HomeCardManager({ cards, controlsPortalId }: HomeCardManagerProp
                   type="button"
                   variant={row.mode === 'high' ? 'default' : 'outline'}
                   size="sm"
-                  className="bg-background/95 pointer-events-auto absolute left-2 h-7 px-2 text-xs shadow-sm backdrop-blur"
+                  className="bg-background pointer-events-auto absolute left-2 h-7 px-2 text-xs shadow-sm"
                   style={{ top: row.top + 8 }}
                   onClick={() => toggleRowMode(row.index)}
                 >
@@ -882,7 +876,7 @@ export function HomeCardManager({ cards, controlsPortalId }: HomeCardManagerProp
             <DialogBody>
               {editingCard && (
                 <div className="grid gap-3 sm:grid-cols-3">
-                  {(['default', 'orange', 'borderless'] as const).map((style) => {
+                  {(['default', 'borderless'] as const).map((style) => {
                     const selected =
                       (layout.styles[editingCard.id] ?? defaultCardStyle(editingCard.id)) === style
                     return (
@@ -893,18 +887,12 @@ export function HomeCardManager({ cards, controlsPortalId }: HomeCardManagerProp
                         className={cn(
                           'min-h-28 rounded-lg border-2 p-3 text-left transition-colors',
                           selected ? 'border-primary' : 'border-border hover:border-primary/50',
-                          style === 'orange' && 'bg-primary text-background',
                           style === 'borderless' && 'border-dashed bg-transparent shadow-none'
                         )}
                         onClick={() => updateCardStyle(editingCard.id, style)}
                       >
                         <span className="font-medium">{t(`home.cards.styles.${style}.title`)}</span>
-                        <span
-                          className={cn(
-                            'mt-2 block text-xs',
-                            style === 'orange' ? 'text-background/80' : 'text-muted-foreground'
-                          )}
-                        >
+                        <span className="text-muted-foreground mt-2 block text-xs">
                           {t(`home.cards.styles.${style}.description`)}
                         </span>
                       </button>

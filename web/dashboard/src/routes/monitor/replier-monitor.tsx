@@ -306,7 +306,7 @@ export function ReplierMonitor({ autoRefresh, refreshKey }: ReplierMonitorProps)
                             </span>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               {reply.success ? (
-                                <Badge variant="default" className="text-xs bg-green-600">
+                                <Badge variant="default" className="text-xs">
                                   <CheckCircle className="h-3 w-3 mr-1" />
                                   成功
                                 </Badge>
@@ -408,7 +408,7 @@ export function ReplierMonitor({ autoRefresh, refreshKey }: ReplierMonitorProps)
               回复生成详情
             </DialogTitle>
             <DialogDescription>
-              查看麦麦的详细回复生成过程
+              查看机器人的详细回复生成过程
             </DialogDescription>
           </DialogHeader>
 
@@ -440,7 +440,7 @@ export function ReplierMonitor({ autoRefresh, refreshKey }: ReplierMonitorProps)
                       <div>
                         <div className="text-xs text-muted-foreground mb-1">状态</div>
                         {selectedLog.success ? (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="default">
                             <CheckCircle className="h-3 w-3 mr-1" />
                             成功
                           </Badge>

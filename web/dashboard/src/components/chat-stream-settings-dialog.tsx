@@ -245,13 +245,14 @@ function getTimelineMinuteFromClient(clientX: number, timelineElement: HTMLEleme
 }
 
 function talkValueColor(value: number): string {
+  // 线条风：发言频率梯度用灰阶深浅表达，不引入彩色。
   if (value >= 0.75) {
-    return 'bg-emerald-500'
+    return 'bg-foreground/80'
   }
   if (value >= 0.45) {
-    return 'bg-amber-500'
+    return 'bg-muted-foreground/60'
   }
-  return 'bg-sky-500'
+  return 'bg-muted-foreground/30'
 }
 
 function getExactTalkRules(detail: ChatStreamDetail): ChatTalkFrequencyRule[] {
@@ -1193,9 +1194,6 @@ function ChatAdapterSection({ detail }: { detail: ChatStreamDetail }) {
                     type="button"
                     size="sm"
                     variant={hasAdapterAllowOverride(adapter) ? 'default' : 'outline'}
-                    className={
-                      hasAdapterAllowOverride(adapter) ? 'bg-green-600 hover:bg-green-700' : undefined
-                    }
                     disabled={policyMutation.isPending}
                     onClick={() => saveAdapterPolicy(adapter, 'allow')}
                   >

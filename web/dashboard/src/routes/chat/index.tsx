@@ -641,7 +641,7 @@ export function ChatPage() {
       try {
         if (tabType === 'virtual' && config) {
           await chatWsClient.openSession(tabId, {
-            client: { type: 'webui', name: 'MaiBot WebUI' },
+            client: { type: 'webui', name: 'WebUI' },
             user_id: config.userId,
             user_name: config.userName,
             platform: config.platform,
@@ -651,7 +651,7 @@ export function ChatPage() {
           })
         } else {
           await chatWsClient.openSession(tabId, {
-            client: { type: 'webui', name: 'MaiBot WebUI' },
+            client: { type: 'webui', name: 'WebUI' },
             user_id: userId,
             user_name: userName,
           })
@@ -833,7 +833,7 @@ export function ChatPage() {
         void cleanup()
       })
       .catch((error) => {
-        console.error('[Chat] 订阅 MaiSaka 状态失败:', error)
+        console.error('[Chat] 订阅运行时状态失败:', error)
       })
 
     return () => {

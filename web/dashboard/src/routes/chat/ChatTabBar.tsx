@@ -67,7 +67,7 @@ export function ChatTabBar({
   )
 
   return (
-    <div className="bg-card/85 supports-backdrop-filter:bg-card/65 shrink-0 border-b backdrop-blur">
+    <div className="bg-card shrink-0 border-b">
       <div className="flex scrollbar-thin items-center gap-1 overflow-x-auto px-3 py-2">
         {tabs.map((tab) => {
           const active = activeObservedSessionId === null && activeTabId === tab.id

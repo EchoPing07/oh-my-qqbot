@@ -13,7 +13,7 @@ export function AboutTab() {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* GitHub 开源地址 */}
-      <div className="rounded-lg border-2 border-primary/30 bg-linear-to-r from-primary/5 to-primary/10 p-4 sm:p-6">
+      <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 sm:p-6">
         <div className="flex items-start gap-3 sm:gap-4">
           <div className="shrink-0 rounded-lg bg-primary/10 p-2 sm:p-3">
             <svg
@@ -37,7 +37,7 @@ export function AboutTab() {
               {t('settings.about.openSourceDesc')}
             </p>
             <a
-              href="https://github.com/Mai-with-u/MaiBot-Dashboard"
+              href="https://github.com/EchoPing07/oh-my-qqbot"
               target="_blank"
               rel="noopener noreferrer"
               className={cn(
@@ -93,11 +93,11 @@ export function AboutTab() {
         <div className="space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium">{t('settings.about.maimaiCore')}</p>
-            <p className="text-xs sm:text-sm text-muted-foreground">Mai-with-u</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">oh-my-qqbot</p>
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium">WebUI</p>
-            <p className="text-xs sm:text-sm text-muted-foreground">Mai-with-u <a href="https://github.com/DrSmoothl" target="_blank" rel="noopener noreferrer" className="text-primary underline">@MotricSeven</a></p>
+            <p className="text-xs sm:text-sm text-muted-foreground">oh-my-qqbot <a href="https://github.com/EchoPing07" target="_blank" rel="noopener noreferrer" className="text-primary underline">@EchoPing07</a></p>
           </div>
         </div>
       </div>
@@ -241,7 +241,7 @@ export function AboutTab() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm sm:text-base font-semibold text-foreground mb-1">
-                  MaiBot WebUI
+                  {APP_NAME}
                 </p>
                 <p className="text-xs sm:text-sm text-muted-foreground">
                   {t('settings.about.licenseDesc')}

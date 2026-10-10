@@ -284,7 +284,7 @@ export function JargonDetailDialog({
                 <Label className="text-muted-foreground text-xs">状态</Label>
                 <div className="flex items-center gap-2">
                   {formData.is_jargon === true && (
-                    <Badge variant="default" className="bg-green-600">
+                    <Badge variant="default" className="bg-foreground text-background">
                       是黑话
                     </Badge>
                   )}
@@ -301,12 +301,12 @@ export function JargonDetailDialog({
                     <Badge variant="secondary">AI</Badge>
                   )}
                   {jargon.is_global && (
-                    <Badge variant="outline" className="border-blue-500 text-blue-500">
+                    <Badge variant="outline" className="border-primary text-primary">
                       全局
                     </Badge>
                   )}
                   {jargon.is_complete && (
-                    <Badge variant="outline" className="border-purple-500 text-purple-500">
+                    <Badge variant="outline" className="text-muted-foreground">
                       推断完成
                     </Badge>
                   )}

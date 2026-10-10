@@ -157,7 +157,7 @@ export function VirtualIdentityDialog({
                                 className={cn(
                                   'text-xs font-semibold',
                                   selected
-                                    ? 'bg-primary-gradient text-primary-foreground'
+                                    ? 'bg-foreground text-background'
                                     : 'bg-muted text-foreground'
                                 )}
                               >
@@ -168,7 +168,7 @@ export function VirtualIdentityDialog({
                               <div className="flex items-center gap-1.5">
                                 <span className="truncate text-sm font-medium">{display}</span>
                                 {person.is_known && (
-                                  <span className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+                                  <span className="border-border text-muted-foreground rounded-full border bg-muted px-1.5 py-0.5 text-[10px] font-medium">
                                     {t('chat.dialog.knownUserSuffix').replace(/^\s*·\s*/, '')}
                                   </span>
                                 )}

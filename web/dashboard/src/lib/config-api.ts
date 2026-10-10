@@ -146,7 +146,7 @@ export async function getModelConfigCached(): Promise<Record<string, unknown>> {
 }
 
 /**
- * 更新麦麦主程序配置
+ * 更新机器人主程序配置
  */
 export async function updateBotConfig(
   config: Record<string, unknown>
@@ -161,7 +161,7 @@ export async function updateBotConfig(
 }
 
 /**
- * 获取麦麦主程序配置的原始 TOML 内容
+ * 获取机器人主程序配置的原始 TOML 内容
  */
 export async function getBotConfigRaw(): Promise<string> {
   return backendApi.get<string>(`${API_BASE}/bot/raw`, {
@@ -171,7 +171,7 @@ export async function getBotConfigRaw(): Promise<string> {
 }
 
 /**
- * 更新麦麦主程序配置（原始 TOML 内容）
+ * 更新机器人主程序配置（原始 TOML 内容）
  */
 export async function updateBotConfigRaw(rawContent: string): Promise<Record<string, unknown>> {
   const result = await backendApi.post<Record<string, unknown>>(`${API_BASE}/bot/raw`, {
@@ -287,7 +287,7 @@ export async function deleteModelConfigVersion(versionId: string): Promise<void>
 }
 
 /**
- * 更新麦麦主程序配置的指定节
+ * 更新机器人主程序配置的指定节
  */
 export async function updateBotConfigSection(
   sectionName: string,

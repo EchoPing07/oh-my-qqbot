@@ -62,7 +62,7 @@ export function ChatComposer({
   const canSend = !disabled && (value.trim().length > 0 || images.length > 0)
 
   return (
-    <div className="bg-card/85 supports-backdrop-filter:bg-card/65 shrink-0 border-t backdrop-blur">
+    <div className="bg-card shrink-0 border-t">
       <div className="mx-auto max-w-4xl px-3 py-3 sm:px-6 sm:py-4">
         {images.length > 0 && (
           <div className="mb-2 flex gap-2 overflow-x-auto px-1 pb-1">

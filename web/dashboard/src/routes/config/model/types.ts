@@ -24,7 +24,7 @@ export interface ModelInfo {
   cache_price_in?: number | null
   price_periods?: ModelPricePeriod[]
   temperature?: number | null // 模型级别温度，覆盖任务配置中的温度
-  send_temperature?: boolean // 是否发送由 MaiBot 管理的 temperature 参数
+  send_temperature?: boolean // 是否发送由主程序管理的 temperature 参数
   max_tokens?: number | null // 模型级别最大token数，覆盖任务配置中的max_tokens
   visual?: boolean
   force_stream_mode?: boolean

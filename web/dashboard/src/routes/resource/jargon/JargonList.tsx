@@ -63,7 +63,7 @@ function renderJargonStatus(jargon: Jargon) {
   return (
     <>
       {jargon.is_jargon ? (
-        <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+        <Badge variant="default" className="bg-foreground text-background hover:bg-foreground/90">
           <Check className="mr-1 h-3 w-3" />
           是黑话
         </Badge>
@@ -94,7 +94,7 @@ function renderManualMarker(createdBy: Jargon['created_by'], showLabel = false) 
       手动
     </Badge>
   ) : (
-    <Check className="h-4 w-4 text-green-600" aria-label="手动创建" />
+    <Check className="h-4 w-4 text-emerald-600" aria-label="手动创建" />
   )
 }
 
@@ -194,7 +194,7 @@ export function JargonList({
                     <div className="flex items-center gap-1.5">
                       {jargon.is_global && (
                         <span title="全局黑话">
-                          <Globe className="h-4 w-4 flex-shrink-0 text-blue-500" />
+                          <Globe className="h-4 w-4 flex-shrink-0 text-primary" />
                         </span>
                       )}
                       <span className="truncate" title={jargon.content}>
@@ -277,7 +277,7 @@ export function JargonList({
                 />
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2">
-                    {jargon.is_global && <Globe className="h-4 w-4 flex-shrink-0 text-blue-500" />}
+                    {jargon.is_global && <Globe className="h-4 w-4 flex-shrink-0 text-primary" />}
                     <h3 className="text-sm font-semibold break-all">{jargon.content}</h3>
                   </div>
                   {jargon.meaning && (

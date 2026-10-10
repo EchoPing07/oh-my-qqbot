@@ -23,26 +23,26 @@ export function ThemeOption({ value, current, onChange, label, description }: Th
         <div className="text-[10px] sm:text-xs text-muted-foreground">{description}</div>
       </div>
 
-      <div className="mt-2 sm:mt-3 flex gap-1">
+      <div className="mt-2 flex gap-1 sm:mt-3">
         {value === 'light' && (
           <>
-            <div className="h-2 w-2 rounded-full bg-slate-200" />
-            <div className="h-2 w-2 rounded-full bg-slate-300" />
-            <div className="h-2 w-2 rounded-full bg-slate-400" />
+            <div className="h-2 w-2 border-border border bg-background" />
+            <div className="h-2 w-2 border-border border bg-muted" />
+            <div className="h-2 w-2 border-border border bg-accent" />
           </>
         )}
         {value === 'dark' && (
           <>
-            <div className="h-2 w-2 rounded-full bg-slate-700" />
-            <div className="h-2 w-2 rounded-full bg-slate-800" />
-            <div className="h-2 w-2 rounded-full bg-slate-900" />
+            <div className="h-2 w-2 border-border border bg-foreground/70" />
+            <div className="h-2 w-2 border-border border bg-foreground/85" />
+            <div className="h-2 w-2 border-border border bg-foreground" />
           </>
         )}
         {value === 'system' && (
           <>
-            <div className="h-2 w-2 rounded-full bg-gradient-to-r from-slate-200 to-slate-700" />
-            <div className="h-2 w-2 rounded-full bg-gradient-to-r from-slate-300 to-slate-800" />
-            <div className="h-2 w-2 rounded-full bg-gradient-to-r from-slate-400 to-slate-900" />
+            <div className="h-2 w-2 border-border border bg-background" />
+            <div className="h-2 w-2 border-border border bg-muted" />
+            <div className="h-2 w-2 border-border border bg-foreground" />
           </>
         )}
       </div>

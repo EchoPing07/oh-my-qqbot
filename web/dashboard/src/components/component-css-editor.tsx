@@ -65,12 +65,12 @@ export function ComponentCSSEditor({
         />
 
         {warnings.length > 0 && (
-          <div className="border-t border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/30 p-3">
-            <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200 text-xs font-medium mb-1">
+          <div className="border-destructive/30 bg-destructive/5 border-t p-3">
+            <div className="text-destructive mb-1 flex items-center gap-2 text-xs font-medium">
               <AlertTriangle className="h-3.5 w-3.5" />
               检测到不安全的 CSS 规则：
             </div>
-            <ul className="text-[10px] sm:text-xs text-yellow-700 dark:text-yellow-300 space-y-0.5 ml-5 list-disc">
+            <ul className="text-destructive/80 ml-5 list-disc space-y-0.5 text-[10px] sm:text-xs">
               {warnings.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}

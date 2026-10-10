@@ -232,17 +232,18 @@ const RECEPTION_NAMES: Record<string, string> = {
   bot_attack: '攻击 Bot',
 }
 
+// 图表配色统一引用主题 token：chart-1 为红（辅色），其余为灰阶序列
 const DISTRIBUTION_COLORS = [
-  '#e4572e',
-  '#168aad',
-  '#2a9d5b',
-  '#8357c5',
-  '#d94f91',
-  '#d9970b',
-  '#008f95',
-  '#6f9f18',
-  '#d1495b',
-  '#5367d5',
+  'hsl(var(--color-chart-1))',
+  'hsl(var(--color-chart-2))',
+  'hsl(var(--color-chart-3))',
+  'hsl(var(--color-chart-4))',
+  'hsl(var(--color-chart-5))',
+  'hsl(var(--color-chart-2))',
+  'hsl(var(--color-chart-3))',
+  'hsl(var(--color-chart-4))',
+  'hsl(var(--color-chart-1))',
+  'hsl(var(--color-chart-5))',
 ]
 
 function scoreWithStdText(
@@ -269,9 +270,9 @@ function receptionSummary(counts: Record<string, number> | undefined) {
 
 function diffLineClass(line: string) {
   if (line.startsWith('+++') || line.startsWith('---')) return 'text-muted-foreground'
-  if (line.startsWith('@@')) return 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
-  if (line.startsWith('+')) return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-  if (line.startsWith('-')) return 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+  if (line.startsWith('@@')) return 'bg-muted text-muted-foreground'
+  if (line.startsWith('+')) return 'bg-muted text-foreground'
+  if (line.startsWith('-')) return 'bg-muted/60 text-muted-foreground line-through'
   return ''
 }
 
@@ -499,14 +500,14 @@ function MetricCard({
   value: string | number
   detail: string
   icon: ComponentType<{ className?: string }>
-  tone: 'primary' | 'blue' | 'rose' | 'violet' | 'amber'
+  tone: 'primary' | 'neutral' | 'muted' | 'destructive'
 }) {
+  // 线条风：辅助色块只做灰阶层次，强调态留给红（primary）
   const toneClasses = {
     primary: 'bg-primary/10 text-primary',
-    blue: 'bg-sky-500/10 text-sky-600 dark:text-sky-300',
-    rose: 'bg-rose-500/10 text-rose-600 dark:text-rose-300',
-    violet: 'bg-violet-500/10 text-violet-600 dark:text-violet-300',
-    amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-300',
+    neutral: 'bg-muted text-foreground',
+    muted: 'bg-muted text-muted-foreground',
+    destructive: 'bg-destructive/10 text-destructive',
   }
 
   return (
@@ -1024,7 +1025,7 @@ export function ReplyEffectsPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>确定清空全部评分数据？</AlertDialogTitle>
                   <AlertDialogDescription>
-                    将删除全部回复效果评分、上下文与诊断镜像，并取消当前尚未结算的观察任务。聊天记录、模型调用和麦麦观察数据不会受到影响。建议先导出备份。
+                    将删除全部回复效果评分、上下文与诊断镜像，并取消当前尚未结算的观察任务。聊天记录、模型调用和机器人观察数据不会受到影响。建议先导出备份。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -1188,14 +1189,14 @@ export function ReplyEffectsPage() {
                 }
                 detail="回应存在、人数、深度与速度"
                 icon={Activity}
-                tone="blue"
+                tone="neutral"
               />
               <MetricCard
                 label="反馈倾向"
                 value={loading ? '…' : receptionSummary(summary?.reception_counts)}
                 detail={`有情绪证据 ${summary?.reception_record_count ?? 0}/${summary?.count ?? 0} 条`}
                 icon={HeartHandshake}
-                tone="rose"
+                tone="muted"
               />
               <MetricCard
                 label="聊天推动度"
@@ -1206,7 +1207,7 @@ export function ReplyEffectsPage() {
                 }
                 detail="延续、参与和互动链变化"
                 icon={MessagesSquare}
-                tone="violet"
+                tone="neutral"
               />
             </div>
 

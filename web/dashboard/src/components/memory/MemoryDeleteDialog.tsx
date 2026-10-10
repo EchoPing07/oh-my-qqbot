@@ -156,7 +156,7 @@ export function MemoryDeleteDialog({
       <DialogContent className="max-w-3xl max-h-[85vh] grid grid-rows-[auto_1fr_auto]" confirmOnEnter>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <AlertTriangle className="h-5 w-5 text-destructive" />
             {title}
           </DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}

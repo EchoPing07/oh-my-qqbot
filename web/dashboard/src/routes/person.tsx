@@ -218,7 +218,7 @@ export function PersonManagementPage() {
               人物信息管理
             </h1>
             <p className="text-muted-foreground mt-1 text-sm sm:text-base">
-              管理麦麦认识的所有人物信息
+              管理机器人认识的所有人物信息
             </p>
           </div>
         </div>
@@ -235,7 +235,7 @@ export function PersonManagementPage() {
         </div>
         <div className="rounded-lg border bg-card p-4">
           <div className="text-sm text-muted-foreground">已认识</div>
-          <div className="text-2xl font-bold mt-1 text-green-600">{stats.known}</div>
+          <div className="text-2xl font-bold mt-1 text-emerald-600">{stats.known}</div>
         </div>
         <div className="rounded-lg border bg-card p-4">
           <div className="text-sm text-muted-foreground">未认识</div>
@@ -407,8 +407,8 @@ export function PersonManagementPage() {
                       <div className={cn(
                         'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
                         person.is_known
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                          : 'bg-muted text-muted-foreground'
                       )}>
                         {person.is_known ? '已认识' : '未认识'}
                       </div>
@@ -443,7 +443,7 @@ export function PersonManagementPage() {
                         <Button
                           size="sm"
                           onClick={() => setDeleteConfirmPerson(person)}
-                          className="bg-red-600 hover:bg-red-700 text-white"
+                          className="bg-destructive hover:bg-destructive/90 text-white"
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
                           删除
@@ -488,8 +488,8 @@ export function PersonManagementPage() {
                     <div className={cn(
                       'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-2',
                       person.is_known
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                        : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground'
                     )}>
                       {person.is_known ? '已认识' : '未认识'}
                     </div>

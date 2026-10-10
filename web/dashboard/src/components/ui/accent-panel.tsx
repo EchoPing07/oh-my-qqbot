@@ -4,10 +4,14 @@ import { cn } from '@/lib/utils'
 
 interface AccentPanelProps extends React.HTMLAttributes<HTMLDivElement> {
   contentClassName?: string
+  /** 兼容保留：线条风下无复古条纹，仅接受 prop 不再渲染装饰 */
   showRetroStripes?: boolean
   showRetroStripeDivider?: boolean
 }
 
+/**
+ * 强调面板 — 线条风实现：左侧 2px 红色指示线，替代原红/黄/蓝三色复古条纹。
+ */
 const AccentPanel = React.forwardRef<HTMLDivElement, AccentPanelProps>(
   (
     {
@@ -23,10 +27,8 @@ const AccentPanel = React.forwardRef<HTMLDivElement, AccentPanelProps>(
     <div
       ref={ref}
       data-dashboard-accent-panel="true"
-      data-retro-stripes={showRetroStripes ? 'true' : 'false'}
-      data-retro-stripe-divider={showRetroStripeDivider ? 'true' : 'false'}
       className={cn(
-        'bg-card border-border text-card-foreground relative overflow-hidden border-2',
+        'bg-card border-border text-card-foreground relative overflow-hidden border',
         className
       )}
       {...props}
@@ -34,12 +36,8 @@ const AccentPanel = React.forwardRef<HTMLDivElement, AccentPanelProps>(
       <div
         aria-hidden="true"
         data-dashboard-accent-panel-stripes="true"
-        className="border-border pointer-events-none absolute inset-y-0 left-0 hidden w-3 border-r-2"
-      >
-        <span className="w-1 bg-red-500" />
-        <span className="w-1 bg-yellow-400" />
-        <span className="w-1 bg-blue-500" />
-      </div>
+        className="bg-primary pointer-events-none absolute inset-y-0 left-0 hidden w-0.5"
+      />
       <div
         data-dashboard-accent-panel-content="true"
         className={cn('relative min-h-full', contentClassName)}

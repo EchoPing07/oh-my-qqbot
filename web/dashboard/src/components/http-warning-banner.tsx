@@ -30,17 +30,17 @@ export function HttpWarningBanner() {
   }
 
   return (
-    <div className="relative bg-amber-500/10 border-b border-amber-500/20 backdrop-blur-sm">
+    <div className="bg-destructive/10 border-destructive/20 relative border-b">
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1">
-            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
+            <AlertTriangle className="text-destructive h-5 w-5 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+              <p className="text-destructive text-sm font-medium">
                 <span className="font-semibold">{t('httpWarning.title')}</span>
                 {t('httpWarning.message')}
               </p>
-              <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+              <p className="text-destructive/80 mt-1 text-xs">
                 {t('httpWarning.description')}
               </p>
             </div>
@@ -49,7 +49,7 @@ export function HttpWarningBanner() {
             variant="ghost"
             size="icon"
             onClick={handleDismiss}
-            className="h-8 w-8 text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200 flex-shrink-0"
+            className="text-destructive hover:text-destructive/80 h-8 w-8 flex-shrink-0"
             aria-label={t('httpWarning.dismiss')}
           >
             <X className="h-4 w-4" />

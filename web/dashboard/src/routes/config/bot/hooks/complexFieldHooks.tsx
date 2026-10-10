@@ -1713,10 +1713,10 @@ const normalizeTalkValue = (value: unknown) => {
 }
 
 const talkValueColor = (value: number) => {
-  if (value <= 0.25) return 'bg-sky-500'
-  if (value <= 0.5) return 'bg-emerald-500'
-  if (value <= 0.75) return 'bg-amber-500'
-  return 'bg-rose-500'
+  if (value <= 0.25) return 'bg-muted-foreground/30'
+  if (value <= 0.5) return 'bg-muted-foreground/50'
+  if (value <= 0.75) return 'bg-muted-foreground/70'
+  return 'bg-foreground/70'
 }
 
 const buildTalkTimelineItems = (items: Record<string, unknown>[]): TalkRuleTimelineItem[] => {
@@ -2716,7 +2716,7 @@ const AliasNamesEditor = createStringListHook({
   borderless: true,
   emptyText: '暂无别名。',
   label: '别名',
-  placeholder: '小麦',
+  placeholder: '例如：小助手',
 })
 
 export const AliasNamesHook: FieldHookComponent = (props) => {
@@ -3315,7 +3315,7 @@ export const ExpressionGroupsHook: FieldHookComponent = ({ fieldPath, onChange, 
   const supportsWildcardTargets = !isSharedMemoryGroup
   const groupScopeOptions = supportsWildcardTargets ? GROUP_SCOPE_OPTIONS : EXACT_GROUP_SCOPE_OPTIONS
   const helperText = isSharedMemoryGroup
-    ? '把几个群聊或私聊放进同一组后，麦麦在其中任意一个聊天里回忆长期记忆时，会一起参考同组聊天的记忆；新产生的内容仍记在原来的聊天里。'
+    ? '把几个群聊或私聊放进同一组后，机器人在其中任意一个聊天里回忆长期记忆时，会一起参考同组聊天的记忆；新产生的内容仍记在原来的聊天里。'
     : isFocusGroup
       ? '配置后只有同组聊天流共享 Focus，不同组可以分别进入 Focus。'
     : `每个共享组内的聊天流会共享已学习的${learnedContentLabel}。`

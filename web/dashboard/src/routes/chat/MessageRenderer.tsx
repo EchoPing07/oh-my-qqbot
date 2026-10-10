@@ -79,7 +79,7 @@ function MediaSegment({ segment, mediaLabel }: MediaSegmentProps) {
       </button>
 
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="border-0 bg-black/95 p-2 text-white shadow-2xl [--dialog-width:72rem]">
+        <DialogContent className="border-0 bg-black/95 p-2 text-white [--dialog-width:72rem]">
           <DialogTitle className="sr-only">{previewTitle}</DialogTitle>
           <DialogDescription className="sr-only">
             {t('chat.media.previewDescription', {

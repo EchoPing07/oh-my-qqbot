@@ -891,7 +891,7 @@ export function KnowledgeGraphPage({ embedded = false, initialParagraphHash = ''
 
   return (
     <div className="flex h-full flex-col">
-      <div className={embedded ? 'flex-none border-b bg-card/60 px-4 py-3 backdrop-blur' : 'flex-none border-b bg-card/60 px-6 py-4 backdrop-blur'}>
+      <div className={embedded ? 'flex-none border-b bg-card px-4 py-3' : 'flex-none border-b bg-card px-6 py-4'}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {!embedded && (
             <div>

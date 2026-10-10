@@ -466,7 +466,7 @@ export function ImagesTab() {
                     )}
                   </section>
                   <section className="space-y-2">
-                    <h3 className="text-sm font-semibold">麦麦记住的说明</h3>
+                    <h3 className="text-sm font-semibold">机器人记住的说明</h3>
                     {(detail.observations ?? []).map((observation) => (
                       <div
                         key={observation.observation_id}

@@ -79,7 +79,7 @@ const replyEffectsRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/reply-effects'), 'ReplyEffectsPage'),
 })
 
-// 配置路由 - 麦麦主程序配置
+// 配置路由 - 机器人主程序配置
 const botConfigRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/config/bot',
@@ -95,7 +95,7 @@ const botConfigRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/config/bot'), 'BotConfigPage'),
 })
 
-// 配置路由 - 麦麦模型配置
+// 配置路由 - 机器人模型配置
 const modelConfigRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/config/model',
@@ -165,7 +165,7 @@ const knowledgeGraphRoute = createRoute({
   ),
 })
 
-// 资源管理路由 - 麦麦知识库管理
+// 资源管理路由 - 机器人知识库管理
 const knowledgeBaseRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/resource/knowledge-base',
@@ -188,7 +188,7 @@ const reasoningProcessRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/logs'), 'ReasoningLogViewerPage'),
 })
 
-// MaiSaka 聊天流监控路由
+// 运行时聊天流监控路由
 const plannerMonitorRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/planner-monitor',
@@ -229,7 +229,7 @@ const settingsRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/settings/index.tsx'), 'SettingsPage'),
 })
 
-// 问卷调查路由、配置模板市场路由已随 MaiBot 特色系统移除
+// 问卷调查路由、配置模板市场路由已随 MaiBot 品牌特色系统移除
 
 // 404 路由
 const notFoundRoute = createRoute({
@@ -264,7 +264,7 @@ const routeTree = rootRoute.addChildren([
     chatManagementRoute,
     chatRoute,
     settingsRoute,
-  // 问卷调查路由、配置模板市场路由已随 MaiBot 特色系统移除
+  // 问卷调查路由、配置模板市场路由已随 MaiBot 品牌特色系统移除
   ]),
   notFoundRoute,
 ])

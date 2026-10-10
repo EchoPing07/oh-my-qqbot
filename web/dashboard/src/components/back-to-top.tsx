@@ -177,9 +177,9 @@ export function BackToTop() {
         size="icon"
         data-dashboard-back-to-top="true"
         className={cn(
-          "relative h-10 w-10 rounded-full shadow-xl",
-          "bg-background/80 backdrop-blur-md border-border/50",
-          "hover:bg-accent hover:scale-105 hover:shadow-2xl hover:border-primary/50",
+          "relative h-10 w-10 rounded-full",
+          "bg-background border-border/50",
+          "hover:bg-accent hover:border-primary/50",
           "touch-none transition-all duration-300",
           dragging ? "cursor-grabbing" : "cursor-grab",
           "group"

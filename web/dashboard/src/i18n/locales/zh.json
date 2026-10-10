@@ -296,7 +296,7 @@
       "emojiSendFailed": "发送表情包失败",
       "emojiUnsupportedDesc": "请选择不超过 2 MB 的 JPG、PNG、WebP 或 GIF 图片。",
       "emojiUploadFailed": "添加表情包失败",
-      "backendUnavailable": "无法连接到后端服务，请确保 MaiBot 已启动",
+      "backendUnavailable": "无法连接到后端服务，请确保主程序已启动",
       "backendUnavailableShort": "无法连接到后端服务",
       "connectionFailed": "连接失败",
       "currentSessionUnavailable": "当前聊天会话不可用，请稍后重试",
@@ -322,7 +322,7 @@
   },
   "layout": {
     "verifyingLogin": "正在验证登录...",
-    "logoTitle": "MaiBot WebUI",
+    "logoTitle": "oh-my-qqbot 控制台",
     "logoTitleShort": "M"
   },
   "httpWarning": {
@@ -596,7 +596,7 @@
     },
     "about": {
       "openSource": "开源项目",
-      "aboutApp": "关于 MaiBot Dashboard",
+      "aboutApp": "关于 oh-my-qqbot 控制台",
       "version": "版本:",
       "author": "作者",
       "techStack": "技术栈",
@@ -609,7 +609,7 @@
       "openSourceDesc": "本项目在 GitHub 开源，欢迎 Star ⭐ 支持！",
       "visitGitHub": "前往 GitHub",
       "appDesc": "oh-my-qqbot 的现代化 Web 管理界面",
-      "maimaiCore": "MaiBot 核心",
+      "maimaiCore": "主程序核心",
       "uiFrameworkGroup": "UI 框架与组件",
       "routingStateGroup": "路由与状态管理",
       "formGroup": "表单处理",
@@ -659,16 +659,16 @@
     "loginFailed": "登录失败",
     "loginSuccess": "登录成功",
     "checkingAuth": "正在检查登录状态...",
-    "welcome": "欢迎使用 MaiBot",
-    "accessDesc": "输入访问密码以进入 MaiBot",
+    "welcome": "欢迎使用 oh-my-qqbot",
+    "accessDesc": "输入 Access Token 以进入控制台",
     "tokenRequired": "请输入访问密码",
     "verifyingLabel": "验证中...",
     "verifyEnter": "验证并进入",
     "helpLink": "我没有密码，我该去哪里获得密码？",
     "helpTitle": "访问密码",
-    "helpDesc": "Access Token 是访问 MaiBot WebUI 的唯一凭证，请按以下方式获取",
+    "helpDesc": "Access Token 是访问控制台的唯一凭证，请按以下方式获取",
     "method1Title": "方式一：查看启动日志",
-    "method1Desc": "在 MaiBot 启动时，控制台会显示 WebUI Access Token。",
+    "method1Desc": "在主程序启动时，控制台会显示 WebUI Access Token。",
     "method1Example1": "🔑 WebUI Access Token: abc123...",
     "method1Example2": "💡 请使用此 Token 登录 WebUI",
     "method2Title": "方式二：查看配置文件",
@@ -940,8 +940,8 @@
     },
     "mainProgramOutdated": {
       "title": "主程序版本过低",
-      "description": "当前主程序 v{{mainVersion}} 仅声明支持 WebUI v{{requiredVersion}}，但正在运行 WebUI v{{webuiVersion}}。请更新 MaiBot 主程序。",
-      "updateTarget": "MaiBot 主程序"
+      "description": "当前主程序 v{{mainVersion}} 仅声明支持 WebUI v{{requiredVersion}}，但正在运行 WebUI v{{webuiVersion}}。请更新主程序。",
+      "updateTarget": "主程序"
     }
   },
   "common": {
@@ -1054,7 +1054,7 @@
       "statisticsDesc": "查看使用统计",
       "plugins": "插件市场",
       "pluginsDesc": "浏览和安装插件",
-      "dataTransferDesc": "管理本地缓存，备份、导出或恢复 MaiBot 数据",
+      "dataTransferDesc": "管理本地缓存，备份、导出或恢复机器人数据",
       "logs": "日志查看器",
       "logsDesc": "查看系统日志",
       "reasoningProcessDesc": "浏览 Maisaka prompt 推理记录",
@@ -1290,10 +1290,6 @@
         "default": {
           "title": "默认样式",
           "description": "使用当前主题的标准卡片外观。"
-        },
-        "orange": {
-          "title": "橙色底背景色字",
-          "description": "使用主题橙色作为底色，背景色作为文字颜色。"
         },
         "borderless": {
           "title": "无边框无底纹",

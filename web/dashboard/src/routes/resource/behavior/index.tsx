@@ -174,14 +174,11 @@ const CLUSTER_SORT_LABELS: Record<BehaviorClusterSortBy, string> = {
 
 const BehaviorGraphNode = memo(({ data }: NodeProps<BehaviorFlowNodeData>) => {
   const styleByKind: Record<string, string> = {
-    action:
-      'border-emerald-300 bg-emerald-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.2)]',
-    outcome: 'border-sky-300 bg-sky-500 text-white shadow-[0_10px_28px_rgba(14,165,233,0.2)]',
-    path: 'border-violet-300 bg-violet-500 text-white shadow-[0_10px_28px_rgba(139,92,246,0.2)]',
+    action: 'bg-card text-foreground border-border',
+    outcome: 'bg-muted text-foreground border-border',
+    path: 'bg-primary text-primary-foreground border-primary/40',
   }
-  const className =
-    styleByKind[data.kind] ??
-    'border-slate-300 bg-slate-700 text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)]'
+  const className = styleByKind[data.kind] ?? 'bg-card text-foreground border-border'
 
   return (
     <div className={cn('w-56 rounded-lg border px-3 py-2 text-left', className)}>
@@ -199,16 +196,16 @@ BehaviorGraphNode.displayName = 'BehaviorGraphNode'
 
 const BehaviorNetworkNodeView = memo(({ data }: NodeProps<BehaviorNetworkNodeData>) => {
   const toneClassName: Record<BehaviorNetworkNodeData['tone'], string> = {
-    amber: 'border-amber-500/40 bg-amber-500 text-white shadow-amber-500/15',
-    primary: 'border-primary/40 bg-primary text-primary-foreground shadow-primary/15',
-    slate: 'border-slate-400/45 bg-slate-600 text-white shadow-slate-500/10',
-    teal: 'border-teal-500/40 bg-teal-600 text-white shadow-teal-500/15',
-    violet: 'border-violet-500/40 bg-violet-600 text-white shadow-violet-500/15',
+    amber: 'bg-foreground text-background border-foreground/40 shadow-none',
+    primary: 'bg-primary text-primary-foreground border-primary/40 shadow-none',
+    slate: 'bg-muted text-foreground border-border shadow-none',
+    teal: 'bg-muted text-foreground border-border shadow-none',
+    violet: 'bg-card text-foreground border-border shadow-none',
   }
   return (
     <div
       className={cn(
-        'behavior-network-node-drag-handle group hover:ring-primary/30 flex h-14 w-14 cursor-grab items-center justify-center rounded-full border text-center text-[10px] font-semibold shadow-lg transition hover:z-10 hover:scale-105 hover:ring-2 active:cursor-grabbing',
+        'behavior-network-node-drag-handle group hover:ring-primary/30 flex h-14 w-14 cursor-grab items-center justify-center rounded-full border text-center text-[10px] font-semibold shadow-sm transition hover:z-10 hover:scale-105 hover:ring-2 active:cursor-grabbing',
         toneClassName[data.tone]
       )}
       title={`${data.detail}\n${data.metric}`}
@@ -1202,11 +1199,11 @@ function BehaviorTagNetworkView({
 }
 
 function canvasToneColor(tone: BehaviorNetworkNodeData['tone']): string {
-  if (tone === 'amber') return '#f59e0b'
-  if (tone === 'teal') return '#0d9488'
-  if (tone === 'primary') return '#2563eb'
-  if (tone === 'violet') return '#7c3aed'
-  return '#475569'
+  if (tone === 'amber') return '#171717'
+  if (tone === 'teal') return '#525252'
+  if (tone === 'primary') return '#dc2626'
+  if (tone === 'violet') return '#a3a3a3'
+  return '#737373'
 }
 
 function canvasNodeWeight(node: BehaviorNetworkNode): number {
@@ -1541,10 +1538,10 @@ function BehaviorNetworkCanvas({
         context.fillStyle = canvasToneColor(node.tone)
         context.fill()
         context.lineWidth = selected ? 4 : 1.6
-        context.strokeStyle = selected ? '#111827' : '#ffffff'
+        context.strokeStyle = selected ? '#171717' : '#ffffff'
         context.stroke()
         if (settings.showLabels && (selected || graphNodes.length < 150 || radius > 12)) {
-          context.fillStyle = '#1d2430'
+          context.fillStyle = '#171717'
           context.font = '12px Microsoft YaHei, Segoe UI, sans-serif'
           context.textAlign = 'center'
           context.textBaseline = 'top'
@@ -1757,7 +1754,7 @@ function NetworkShell({
               settingsOpen ? 'translate-x-0' : '-translate-x-[calc(100%-2.5rem)]'
             )}
           >
-            <div className="bg-background/95 supports-[backdrop-filter]:bg-background/88 overflow-hidden rounded-md border shadow-lg backdrop-blur">
+            <div className="bg-card overflow-hidden rounded-md border shadow-sm">
               <div className="flex items-center justify-between border-b px-3 py-2">
                 <span className="text-sm font-medium">图谱调节</span>
                 <Button
@@ -1878,8 +1875,8 @@ function NetworkShell({
                 : 'pointer-events-none translate-x-[calc(100%+2rem)] opacity-0'
             )}
           >
-            <div className="bg-background/96 supports-[backdrop-filter]:bg-background/88 flex h-full flex-col overflow-hidden rounded-lg border shadow-2xl backdrop-blur-md">
-              <div className="bg-background/95 flex items-center justify-between border-b px-4 py-3 backdrop-blur-md">
+            <div className="bg-card flex h-full flex-col overflow-hidden rounded-lg border shadow-sm">
+              <div className="flex items-center justify-between border-b px-4 py-3">
                 <div>
                   <h2 className="text-sm font-semibold">节点详情</h2>
                   <p className="text-muted-foreground text-xs">分布、成员和统计信息</p>
@@ -1893,7 +1890,7 @@ function NetworkShell({
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <ScrollArea className="bg-background/90 min-h-0 flex-1 p-4 backdrop-blur-md">
+              <ScrollArea className="min-h-0 flex-1 p-4">
                 {detail}
               </ScrollArea>
             </div>
@@ -2581,12 +2578,12 @@ function buildBehaviorFlowGraph(detail: BehaviorPathDetail): {
     .map((edge) => {
       const color =
         edge.kind === 'action_outcome'
-          ? '#0284c7'
+          ? '#dc2626'
           : edge.kind === 'scene_action'
-            ? '#059669'
+            ? '#171717'
             : edge.kind === 'co_occurs'
-              ? '#94a3b8'
-              : '#7c3aed'
+              ? '#a3a3a3'
+              : '#525252'
       return {
         id: edge.id,
         source: edge.source,
@@ -2610,7 +2607,7 @@ function buildBehaviorFlowGraph(detail: BehaviorPathDetail): {
             edge.kind === 'co_occurs' ? 0.25 : shouldShowBehaviorEdgeLabel(edge.kind) ? 0.82 : 0.48,
         },
         labelStyle: {
-          fill: '#334155',
+          fill: '#404040',
           fontSize: 11,
           fontWeight: 600,
         },

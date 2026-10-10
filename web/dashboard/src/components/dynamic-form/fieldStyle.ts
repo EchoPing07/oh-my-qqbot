@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { ConfigSchema, FieldSchema } from '@/types/config-schema'
 
-export const advancedFieldTitleClassName = 'text-sky-700 dark:text-sky-300'
+export const advancedFieldTitleClassName = 'text-primary'
 export const normalFieldTitleClassName = 'text-foreground'
 
 export function isAdvancedField(schema?: ConfigSchema | FieldSchema): boolean {

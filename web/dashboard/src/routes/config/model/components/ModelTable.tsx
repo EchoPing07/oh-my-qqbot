@@ -51,7 +51,7 @@ interface ModelTableProps {
 
 // 表格内容（模型标识符、价格等列）在窄屏下宽于容器，操作列固定在右缘，
 // 保证「添加」与每行的测试/编辑/删除三个按钮始终可见可点。
-// 背景色需为不透明色，否则滚动内容会透过固定列显示；retro 主题的实色见 index.css。
+// 背景色需为不透明色，否则滚动内容会透过固定列显示（见 index.css 的实色定义）。
 const ACTION_CELL_CLASS = 'sticky right-0 z-10 bg-background text-right'
 const ACTION_CELL_ATTR = { 'data-model-config-action-cell': 'true' } as const
 
@@ -59,7 +59,7 @@ function getModelTestStatus(result: ModelTestResult | undefined, isTesting: bool
   if (isTesting) {
     return {
       description: '正在测试模型能力',
-      className: 'border-amber-500 animate-pulse',
+      className: 'border-primary animate-pulse',
     }
   }
 
@@ -79,13 +79,13 @@ function getModelTestStatus(result: ModelTestResult | undefined, isTesting: bool
       description: `${summary}${
         result.latency_ms != null ? `，耗时 ${(result.latency_ms / 1000).toFixed(2)}s` : ''
       }`,
-      className: 'border-green-500',
+      className: 'border-primary',
     }
   }
 
   return {
     description: result.error || '模型能力测试未通过',
-    className: 'border-red-500',
+    className: 'border-destructive',
   }
 }
 
@@ -169,8 +169,8 @@ export const ModelTable = React.memo(function ModelTable({
                       <span
                         className={`mx-auto block h-3 w-3 rounded-full border ${
                           used
-                            ? 'border-green-500 bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]'
-                            : 'border-green-700/40 bg-green-950/20'
+                            ? 'border-primary bg-primary'
+                            : 'border-muted-foreground/40 bg-muted'
                         }`}
                         title={used ? '已使用' : '未使用'}
                         aria-label={used ? '已使用' : '未使用'}
@@ -198,8 +198,8 @@ export const ModelTable = React.memo(function ModelTable({
                       <span
                         className={`mx-auto block h-3 w-3 rounded-full border ${
                           model.visual
-                            ? 'border-green-500 bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]'
-                            : 'border-green-700/40 bg-green-950/20'
+                            ? 'border-primary bg-primary'
+                            : 'border-muted-foreground/40 bg-muted'
                         }`}
                         title={model.visual ? '已启用视觉' : '未启用视觉'}
                         aria-label={model.visual ? '已启用视觉' : '未启用视觉'}

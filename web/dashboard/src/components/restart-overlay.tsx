@@ -101,7 +101,7 @@ const getStatusConfig = (
       tip: t('restart.checkingTip'),
     },
     success: {
-      icon: <CheckCircle2 className="h-16 w-16 text-green-500" />,
+      icon: <CheckCircle2 className="text-primary h-16 w-16" />,
       title: t('restart.success'),
       description: t('restart.successDesc'),
       tip: t('restart.successTip'),
@@ -223,7 +223,7 @@ function RestartOverlayContent({
   return (
     <div
       className={cn(
-        'fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex items-center justify-center',
+        'fixed inset-0 bg-background/95 z-50 flex items-center justify-center',
         className
       )}
     >
@@ -394,18 +394,13 @@ function StandaloneRestartOverlay({
 
 function BackgroundAnimation() {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* 渐变圆环 */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
-        <div className="absolute inset-0 rounded-full border border-primary/10 animate-[ping_3s_ease-in-out_infinite]" />
-        <div className="absolute inset-8 rounded-full border border-primary/10 animate-[ping_3s_ease-in-out_infinite_0.5s]" />
-        <div className="absolute inset-16 rounded-full border border-primary/10 animate-[ping_3s_ease-in-out_infinite_1s]" />
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {/* 线条风圆环：纯描边脉冲，无渐变无粒子 */}
+      <div className="absolute top-1/2 left-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2">
+        <div className="absolute inset-0 animate-[ping_3s_ease-in-out_infinite] rounded-full border border-primary/10" />
+        <div className="absolute inset-8 animate-[ping_3s_ease-in-out_infinite_0.5s] rounded-full border border-primary/10" />
+        <div className="absolute inset-16 animate-[ping_3s_ease-in-out_infinite_1s] rounded-full border border-primary/10" />
       </div>
-
-      {/* 浮动粒子 */}
-      <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-primary/20 rounded-full animate-bounce" />
-      <div className="absolute top-3/4 right-1/4 w-3 h-3 bg-primary/15 rounded-full animate-bounce delay-150" />
-      <div className="absolute top-1/2 right-1/3 w-2 h-2 bg-primary/20 rounded-full animate-bounce delay-300" />
     </div>
   )
 }

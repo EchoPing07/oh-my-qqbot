@@ -162,13 +162,13 @@ export function FeedbackTab({ feedback }: FeedbackTabProps) {
                           {(preview.oldRelation || preview.newRelation) ? (
                             <div className="grid gap-2 rounded-lg border bg-background/70 p-3 text-xs shadow-sm">
                               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-stretch">
-                                <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2">
-                                  <div className="text-[11px] font-medium text-amber-700 dark:text-amber-300">纠错前</div>
+                                <div className="rounded-md border border-border p-2">
+                                  <div className="text-[11px] font-medium text-muted-foreground">纠错前</div>
                                   <div className="mt-1 break-words">{preview.oldRelation || '无'}</div>
                                 </div>
                                 <div className="hidden items-center text-muted-foreground sm:flex">→</div>
-                                <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-2">
-                                  <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">纠错后</div>
+                                <div className="rounded-md border border-emerald-600/30 p-2">
+                                  <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">纠错后</div>
                                   <div className="mt-1 break-words">{preview.newRelation || '无'}</div>
                                 </div>
                               </div>
@@ -246,15 +246,15 @@ export function FeedbackTab({ feedback }: FeedbackTabProps) {
                       <div className="rounded-xl border bg-background/70 p-4 shadow-sm">
                         <div className="text-sm font-semibold">本次纠错结论</div>
                         <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-stretch">
-                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                            <div className="text-xs font-medium text-amber-700 dark:text-amber-300">纠错前</div>
+                          <div className="rounded-lg border border-border p-3">
+                            <div className="text-xs font-medium text-muted-foreground">纠错前</div>
                             <div className="mt-2 text-sm break-words">
                               {selectedFeedbackPreview.oldRelation || '当前详情没有记录旧结论'}
                             </div>
                           </div>
                           <div className="hidden items-center justify-center text-muted-foreground md:flex">→</div>
-                          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-                            <div className="text-xs font-medium text-emerald-700 dark:text-emerald-300">纠错后</div>
+                          <div className="rounded-lg border border-emerald-600/30 p-3">
+                            <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400">纠错后</div>
                             <div className="mt-2 text-sm break-words">
                               {selectedFeedbackPreview.newRelation || '当前详情没有记录新结论'}
                             </div>
