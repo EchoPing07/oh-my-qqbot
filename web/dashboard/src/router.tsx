@@ -15,7 +15,7 @@ import { RoutePendingFallback } from '@/components/RoutePendingFallback'
 const rootRoute = createRootRoute({
   component: Outlet,
   beforeLoad: ({ location }) => {
-    const publicPaths = ['/auth', '/setup', '/chat/embed']
+    const publicPaths = ['/auth', '/setup']
     if (publicPaths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))) {
       return
     }
@@ -42,12 +42,6 @@ const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/setup',
   component: lazyPage(() => import('@/pages/Setup'), 'SetupPage'),
-})
-
-const chatEmbedRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/chat/embed',
-  component: lazyPage(() => import('@/pages/ChatEmbed'), 'ChatEmbedPage'),
 })
 
 // ── 受保护路由（带 Layout） ──
@@ -153,6 +147,13 @@ const settingsRoute = createRoute({
   component: lazyPage(() => import('@/pages/Settings'), 'SettingsPage'),
 })
 
+// 关于：独立于设置（侧边栏「系统」分组单独入口）
+const aboutRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/about',
+  component: lazyPage(() => import('@/pages/About'), 'AboutPage'),
+})
+
 const notFoundRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '*',
@@ -179,7 +180,6 @@ function createLazyComponent(
 const routeTree = rootRoute.addChildren([
   authRoute,
   setupRoute,
-  chatEmbedRoute,
   protectedRoute.addChildren([
     indexRoute,
     chatRoute,
@@ -196,6 +196,7 @@ const routeTree = rootRoute.addChildren([
     statisticsRoute,
     dataTransferRoute,
     settingsRoute,
+    aboutRoute,
   ]),
   notFoundRoute,
 ])

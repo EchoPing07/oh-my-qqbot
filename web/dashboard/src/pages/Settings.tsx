@@ -1,31 +1,19 @@
 /**
- * 设置 页 — 安全 / 外观 / 关于 三个分组。
+ * 设置 页 — 安全 / 外观 两个分组（关于已独立成 /about 页）。
  *
  * 安全（对齐 internal/webui/routers/auth.go 与 system.go）：
- * - POST /auth/update            修改密码（后端 UpdateToken 即时生效，当前 Bearer 已是新值，无需重登）
- * - POST /auth/regenerate        重新生成 token（所有已登录会话立即失效，必须重新登录）
+ * - POST /auth/update            修改密码（至少 6 位、不含空格；即时生效，无需重登）
+ * - POST /auth/regenerate        重新生成随机凭据（所有已登录会话立即失效，必须重新登录）
  * - GET  /setup/status           首次配置状态（带 Bearer，is_first_setup / token_source）
  * - POST /setup/reset | /setup/complete   重置 / 完成首次配置向导
  * - POST /system/reload-config   热重载配置
  * 外观：localStorage 'omb-theme-mode'（经 @/lib/theme 的 readStoredTheme/storeTheme/applyTheme）。
- * 关于：@/lib/version（前端版本）+ GET /system/status（后端版本 / Go 版本 / 启动时间）。
  */
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Check,
-  Copy,
-  KeyRound,
-  LogOut,
-  Monitor,
-  Moon,
-  RefreshCw,
-  RotateCcw,
-  Sun,
-  TriangleAlert,
-} from 'lucide-react'
+import { Check, Copy, KeyRound, LogOut, Monitor, Moon, RefreshCw, RotateCcw, Sun } from 'lucide-react'
 
 import {
   completeSetup,
@@ -34,9 +22,7 @@ import {
   resetSetup,
   updatePassword,
 } from '@/api/auth'
-import { getSystemStatus } from '@/api/system'
 import { reloadConfig } from '@/api/misc'
-import { APP_NAME, APP_VERSION } from '@/lib/version'
 import {
   applyTheme,
   readStoredTheme,
@@ -46,36 +32,22 @@ import {
 } from '@/lib/theme'
 import { logoutLocal } from '@/lib/token'
 import { toast } from '@/lib/toast'
-import { formatDateTime, formatUptime } from '@/lib/format'
 import { Banner, ConfirmModal, Field, Loading, Modal, TextInput } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
-type SettingsTab = 'security' | 'appearance' | 'about'
+/** 设置分组（关于已独立成页，不再放进设置）。 */
+type SettingsTab = 'security' | 'appearance'
 
 const TABS: Array<{ key: SettingsTab; label: string }> = [
   { key: 'security', label: '安全' },
   { key: 'appearance', label: '外观' },
-  { key: 'about', label: '关于' },
 ]
-
-/** 与后端 validateCustomToken（internal/webui/auth.go）一致的特殊符号集合。 */
-const SPECIAL_CHARS = '!@#$%^&*()_+-=[]{}|;:,.<>?/'
 
 /** 客户端预校验：返回问题文案，空串表示通过（规则对齐后端 validateCustomToken）。 */
 function passwordProblem(v: string): string {
   if (!v) return '请输入新密码'
-  if (v.length < 10) return '密码长度至少 10 位'
-  let hasUpper = false
-  let hasLower = false
-  let hasSpecial = false
-  for (const ch of v) {
-    if (ch >= 'A' && ch <= 'Z') hasUpper = true
-    else if (ch >= 'a' && ch <= 'z') hasLower = true
-    else if (SPECIAL_CHARS.includes(ch)) hasSpecial = true
-  }
-  if (!hasUpper) return '必须包含大写字母'
-  if (!hasLower) return '必须包含小写字母'
-  if (!hasSpecial) return '必须包含特殊符号（如 !@#$%^&* 等）'
+  if (v.length < 6) return '密码长度至少 6 位'
+  if (/\s/.test(v)) return '密码不能包含空格'
   return ''
 }
 
@@ -97,11 +69,11 @@ export function SettingsPage() {
       <div className="page-head">
         <div>
           <h1>设置</h1>
-          <p className="page-sub">安全凭据、界面外观与应用信息</p>
+          <p className="page-sub">登录凭据、界面外观与配置热重载</p>
         </div>
         <div className="page-actions">
-          <button className="btn btn-ghost" onClick={() => logoutLocal()} title="清除本地 token 并回到登录页">
-            <LogOut /> 登出
+          <button className="btn btn-ghost" onClick={() => logoutLocal()} title="退出登录并清除本地凭据">
+            <LogOut /> 退出登录
           </button>
         </div>
       </div>
@@ -121,9 +93,7 @@ export function SettingsPage() {
         ))}
       </div>
 
-      {tab === 'security' ? <SecurityPanel /> : null}
-      {tab === 'appearance' ? <AppearancePanel /> : null}
-      {tab === 'about' ? <AboutPanel /> : null}
+      {tab === 'security' ? <SecurityPanel /> : <AppearancePanel />}
     </div>
   )
 }
@@ -182,11 +152,7 @@ function PasswordCard() {
           }}
           style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 420 }}
         >
-          <Field
-            label="新密码"
-            error={errors.pwd}
-            hint="至少 10 位，需同时包含大写字母、小写字母与特殊符号"
-          >
+          <Field label="新密码" error={errors.pwd} hint="至少 6 位，不含空格">
             <TextInput
               type="password"
               autoComplete="new-password"
@@ -224,6 +190,7 @@ function PasswordCard() {
             </button>
           </div>
           <p className="muted-xs">修改即时生效：当前浏览器会话将继续使用新密码，无需重新登录。</p>
+          <p className="muted-xs">忘记密码时，删除 <code>data/webui.json</code> 后重启主程序即可恢复默认密码 <code>admin123</code>。</p>
         </form>
       </div>
     </div>
@@ -531,80 +498,6 @@ function AppearancePanel() {
               </button>
             )
           })}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ══════════════════════════════ 关于 ══════════════════════════════
-
-/** 关于面板：前端版本（@/lib/version）+ 后端状态（GET /system/status）+ 开源说明。 */
-function AboutPanel() {
-  const sys = useQuery({
-    queryKey: ['about-system-status'],
-    queryFn: getSystemStatus,
-    staleTime: 30_000,
-  })
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="card">
-        <div className="card-head">
-          <h3>应用信息</h3>
-        </div>
-        <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="kv-grid">
-            <div className="kv">
-              <span className="k">应用名</span>
-              <span className="v">{APP_NAME}</span>
-            </div>
-            <div className="kv">
-              <span className="k">WebUI 版本</span>
-              <span className="v">{APP_VERSION}</span>
-            </div>
-            <div className="kv">
-              <span className="k">后端版本</span>
-              <span className="v">{sys.data?.version || '—'}</span>
-            </div>
-            <div className="kv">
-              <span className="k">Go 版本</span>
-              <span className="v">{sys.data?.go_version || '—'}</span>
-            </div>
-            <div className="kv">
-              <span className="k">后端启动时间</span>
-              <span className="v">{sys.data ? formatDateTime(sys.data.start_time) : '—'}</span>
-            </div>
-            <div className="kv">
-              <span className="k">运行时长</span>
-              <span className="v">{sys.data ? formatUptime(sys.data.uptime) : '—'}</span>
-            </div>
-          </div>
-          {sys.isError ? <Banner kind="err">后端状态获取失败：{errText(sys.error)}</Banner> : null}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-head">
-          <h3>开源说明</h3>
-        </div>
-        <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <p className="sm">
-            本项目以 <strong>GPLv3</strong> 协议开源，遵循协议自由使用、修改与分发。
-          </p>
-          <p className="sm">
-            项目衍生自 <strong>MaiBot</strong>，在此感谢原项目作者的贡献。
-          </p>
-          <p className="sm">
-            WebUI 前端为全新实现（React + Go 后端原生路由），不依赖 MaiBot 原前端代码。
-          </p>
-          <p className="muted-xs">
-            <TriangleAlert
-              size={12}
-              style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }}
-            />
-            分发本项目（含修改版）时请一并附上 GPLv3 协议文本与来源声明。
-          </p>
         </div>
       </div>
     </div>

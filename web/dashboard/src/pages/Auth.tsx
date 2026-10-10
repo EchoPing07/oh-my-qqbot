@@ -1,8 +1,11 @@
 /**
- * 登录页 — 密码即 access token（默认 admin123）。
+ * 登录页 — 简化认证：单一管理密码（默认 admin123，可在「设置」中修改）。
  *
  * 流程：verifyToken 成功 → 存 token → is_first_setup 时进向导 → 否则回跳 redirect 目标。
  * 已登录访问 /auth 时自动跳走；URL 带 ?token= 时自动登录（用后即从地址栏剥离防泄露）。
+ *
+ * 简化点：不再区分 temporary/configured 凭据来源、不再强制改密、不再要求
+ * 「大小写 + 特殊符号」的复杂组合 —— 只校验密码本身是否正确。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -11,8 +14,12 @@ import { CircleAlert, KeyRound } from 'lucide-react'
 
 import { checkAuth, getSetupStatus, storeLoginToken, verifyToken } from '@/api/auth'
 import { postAuthTarget } from '@/router'
+import { Banner } from '@/components/ui'
 import { APP_NAME } from '@/lib/version'
 import { cn } from '@/lib/cn'
+
+/** 后端默认密码（与 internal/webui.DefaultWebUIPassword 一致）：仅用于登录页提示。 */
+const DEFAULT_PASSWORD = 'admin123'
 
 function extractUrlToken(): string {
   const fromQuery = new URLSearchParams(window.location.search).get('token')
@@ -45,6 +52,8 @@ export function AuthPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [checking, setChecking] = useState(true)
+  // 用默认密码登录成功时提示改密（简化认证不再强制拦截，只做一次提醒）
+  const [defaultPasswordHint, setDefaultPasswordHint] = useState(false)
   const urlTokenHandledRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -64,6 +73,7 @@ export function AuthPage() {
           return false
         }
         storeLoginToken(token)
+        setDefaultPasswordHint(token === DEFAULT_PASSWORD)
         if (result.is_first_setup) {
           navigate({ to: '/setup' })
         } else {
@@ -142,6 +152,9 @@ export function AuthPage() {
           <h1 className="login-title">登录</h1>
           <p className="login-sub">输入管理密码进入控制台</p>
         </div>
+        {defaultPasswordHint ? (
+          <Banner kind="warn">当前使用默认密码，登录后请到「设置」中修改。</Banner>
+        ) : null}
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -188,12 +201,10 @@ export function AuthPage() {
           </button>
         </form>
         <details className="disclosure">
-          <summary>没有密码？</summary>
+          <summary>忘记密码？</summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
             <div className="code-block">
               默认密码：<code>admin123</code>
-              <br />
-              登录后请在 设置 → 安全 中修改。
             </div>
             <div className="code-block">
               忘记密码：删除 <code>data/webui.json</code> 后重启主程序即可重置为默认密码。

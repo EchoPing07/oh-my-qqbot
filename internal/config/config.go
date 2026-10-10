@@ -18,6 +18,10 @@ type BotConfig struct {
 	Platforms  []string `toml:"platforms"`  // 其他备用平台，格式为 platform:账号
 	Nickname   string   `toml:"nickname"`   // 麦麦显示和自称时使用的名字（默认 麦麦）
 	AliasNames []string `toml:"alias_names"`
+	// AppID / AppSecret 是 QQ 开放平台的机器人凭据：WebUI「机器人设置 → 机器人」
+	// 填写后落盘在本节，装配层优先读这里，缺失时回退环境变量 QQ_APP_ID / QQ_APP_SECRET。
+	AppID     string `toml:"app_id"`
+	AppSecret string `toml:"app_secret"`
 }
 
 func defaultBotConfig() BotConfig {

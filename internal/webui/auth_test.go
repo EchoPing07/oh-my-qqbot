@@ -123,10 +123,9 @@ func TestTokenManagerUpdateValidation(t *testing.T) {
 		want  bool
 	}{
 		{"", false},
-		{"short", false},
-		{"alllowercase#123", false}, // 缺大写
-		{"ALLUPPERCASE#123", false}, // 缺小写
-		{"NoSpecial123Abc", false},  // 缺特殊符号
+		{"short", false},   // 长度不足 6 位
+		{"a b c d", false}, // 含空格
+		{"admin123", true}, // 简单密码（简化认证允许）
 		{"Good#Token123", true},
 	}
 	for _, c := range cases {
@@ -194,5 +193,37 @@ func TestWSTokenRejectsBadSession(t *testing.T) {
 	wsToken := tm.GenerateWSToken("not-a-valid-session-token")
 	if tm.VerifyWSToken(wsToken) {
 		t.Fatalf("无效 session 签发的临时 token 应拒绝")
+	}
+}
+
+// 简化认证：默认密码本身即可通过校验（不再要求大小写 + 特殊符号组合）。
+func TestValidateCustomTokenSimplePolicy(t *testing.T) {
+	cases := []struct {
+		token string
+		want  bool
+	}{
+		{DefaultWebUIPassword, true}, // admin123
+		{"123456", true},             // 6 位纯数字即可
+		{"abc", false},               // 不足 6 位
+		{"pass word", false},         // 含空格
+		{"密码密码密码", true},             // 中文密码（按字节长度 ≥6）
+	}
+	for _, c := range cases {
+		valid, msg := validateCustomToken(c.token)
+		if valid != c.want {
+			t.Fatalf("validateCustomToken(%q) = %v (%s), want %v", c.token, valid, msg, c.want)
+		}
+	}
+}
+
+// 短密码（简化认证允许 6 位）不得让 UpdateToken 在日志截断处越界 panic。
+func TestUpdateTokenShortPasswordNoPanic(t *testing.T) {
+	tm := newTestTokenManager(t)
+	ok, msg := tm.UpdateToken("abc123")
+	if !ok {
+		t.Fatalf("6 位简单密码应允许: %s", msg)
+	}
+	if !tm.VerifyToken("abc123") {
+		t.Fatal("新密码应可登录")
 	}
 }

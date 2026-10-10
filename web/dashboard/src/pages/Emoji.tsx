@@ -119,7 +119,7 @@ export function EmojiPage() {
       <div className="page-head">
         <div>
           <h1>表情包</h1>
-          <p className="page-sub">机器人的表情缓存与 VLM 描述，可禁用或清理</p>
+          <p className="page-sub">机器人的表情缓存与识图描述，可禁用或清理</p>
         </div>
         <div className="page-actions">
           <button
@@ -164,7 +164,7 @@ export function EmojiPage() {
                         <th className="num">查询次数</th>
                         <th>登记</th>
                         <th>状态</th>
-                        <th>VLM</th>
+                        <th>识图</th>
                         <th>文件</th>
                         <th>注册时间</th>
                         <th style={{ width: 200 }} />
@@ -287,7 +287,7 @@ export function EmojiPage() {
           <KV k="查询次数" v={formatNumber(detail?.query_count ?? 0)} />
           <KV k="已登记" v={yesNo(detail?.is_registered ?? false, '是', '否')} />
           <KV k="已禁用" v={yesNo(detail?.is_banned ?? false, '是', '否')} />
-          <KV k="VLM 已描述" v={yesNo(detail?.vlm_processed ?? false, '是', '否')} />
+          <KV k="已生成识图描述" v={yesNo(detail?.vlm_processed ?? false, '是', '否')} />
           <KV k="文件缺失" v={yesNo(detail?.no_file ?? false, '是', '否')} />
           <KV k="注册时间" v={formatDateTime(detail?.register_time)} />
           <KV k="完整路径（服务器本地）" v={detail?.full_path || '未记录'} mono />

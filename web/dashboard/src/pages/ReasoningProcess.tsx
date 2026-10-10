@@ -104,10 +104,10 @@ export function ReasoningProcessPage() {
                 <thead>
                   <tr>
                     <th style={{ width: 28 }} />
-                    <th className="num" style={{ width: 70 }}>seq</th>
-                    <th style={{ width: 160 }}>kind</th>
-                    <th>session_id</th>
-                    <th style={{ width: 180 }}>time</th>
+                    <th className="num" style={{ width: 70 }}>序号</th>
+                    <th style={{ width: 160 }}>类型</th>
+                    <th>会话</th>
+                    <th style={{ width: 180 }}>时间</th>
                   </tr>
                 </thead>
                 <tbody>

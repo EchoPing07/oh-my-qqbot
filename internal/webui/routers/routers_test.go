@@ -4,6 +4,7 @@ package routers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -322,5 +323,76 @@ func TestNewsRoute(t *testing.T) {
 	env.mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadGateway && rec.Code != http.StatusOK {
 		t.Fatalf("news 应 502 或 200, got %d", rec.Code)
+	}
+}
+
+// TestLogServiceRecordAttrsNotDropped 回归 P1：record 级 attrs（每次调用传的
+// "err", err 等）必须进入 message，否则 WebUI 日志只剩光秃秃的警告
+// （docs/DEBUG_REPORT_2026-10-10_link_failures.md §4）。
+func TestLogServiceRecordAttrsNotDropped(t *testing.T) {
+	d := NewLogService(16, nil, nil)
+	rec := newRecord(slogLevelWarn, "心流会话创建失败")
+	rec.AddAttrs(slog.String("err", "未找到 session_id=xxx 对应的聊天流"))
+	if err := d.Handle(nil, rec); err != nil {
+		t.Fatal(err)
+	}
+	entries := d.Recent(10, "")
+	if len(entries) != 1 {
+		t.Fatalf("应 1 条日志: %d", len(entries))
+	}
+	msg := entries[0].Message
+	if !strings.Contains(msg, "心流会话创建失败") || !strings.Contains(msg, "err=未找到 session_id=xxx 对应的聊天流") {
+		t.Fatalf("record attrs 应并入 message: %q", msg)
+	}
+}
+
+// TestLogServiceWithAttrsNoDuplicateAppend 确认预置 attrs（WithAttrs）与
+// record attrs 同时存在时不双重拼接。
+func TestLogServiceWithAttrsNoDuplicateAppend(t *testing.T) {
+	base := NewLogService(16, nil, nil)
+	h := base.WithAttrs([]slog.Attr{slog.String("session", "s1")})
+	rec := slog.NewRecord(time.Now(), slog.LevelInfo, "turn done", 0)
+	rec.AddAttrs(slog.String("round", "r1"))
+	if err := h.Handle(nil, rec); err != nil {
+		t.Fatal(err)
+	}
+	entries := base.Recent(10, "")
+	if len(entries) != 1 {
+		t.Fatalf("应 1 条日志: %d", len(entries))
+	}
+	msg := entries[0].Message
+	if strings.Count(msg, "session=s1") != 1 || strings.Count(msg, "round=r1") != 1 {
+		t.Fatalf("预置与 record attrs 应各出现一次: %q", msg)
+	}
+}
+
+// TestBotSchemaPutsBotSectionFirst 「机器人设置」的节导航必须把「机器人」排在第一位
+// （内含 AppID / AppSecret 等首次启用必填凭据），且保持服务端声明的有序输出。
+func TestBotSchemaPutsBotSectionFirst(t *testing.T) {
+	env := newTestEnv(t, nil)
+	req := httptest.NewRequest("GET", "/api/webui/config/schema/bot", nil)
+	req.Header.Set("Authorization", "Bearer "+env.token)
+	rec := httptest.NewRecorder()
+	env.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("schema 应 200, got %d", rec.Code)
+	}
+	var body struct {
+		Schema struct {
+			Properties []struct {
+				Name  string `json:"name"`
+				Title string `json:"title"`
+			} `json:"properties"`
+		} `json:"schema"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("schema 响应解析失败: %v", err)
+	}
+	props := body.Schema.Properties
+	if len(props) == 0 {
+		t.Fatal("schema 不应为空")
+	}
+	if props[0].Name != "bot" || props[0].Title != "机器人" {
+		t.Fatalf("第一节应为 bot/机器人, got %s/%s", props[0].Name, props[0].Title)
 	}
 }

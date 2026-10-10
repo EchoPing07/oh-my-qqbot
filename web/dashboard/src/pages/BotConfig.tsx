@@ -9,18 +9,21 @@
 
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { RotateCcw, Save } from 'lucide-react'
+import { Eye, EyeOff, RotateCcw, Save } from 'lucide-react'
 
 import { getBotConfig, getBotSchema, saveBotSection, type ConfigData } from '@/api/config'
 import { reloadConfig } from '@/api/misc'
-import { Banner, Loading, Toggle } from '@/components/ui'
+import { Banner, Loading, TextInput, Toggle } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { toast } from '@/lib/toast'
 
 /** 编辑器最大递归深度：更深的嵌套以只读 JSON 展示。 */
 const MAX_DEPTH = 3
 
-/** 节的中文名（后端 schema title 的兜底 + 补充说明）。 */
+/**
+ * 节的中文名（后端 schema title 优先）。
+ * 「机器人」节含 AppID / AppSecret 等首次启用必填项，后端 schema 已将其排在第一位。
+ */
 function sectionTitle(name: string, schemaTitle?: string): string {
   if (schemaTitle) return schemaTitle
   const fallback: Record<string, string> = {
@@ -55,8 +58,15 @@ export function BotConfigPage() {
   const [active, setActive] = useState('')
   const [dirty, setDirty] = useState<Record<string, ConfigData>>({})
 
-  const sectionNames = useMemo(() => Object.keys(schema.data ?? {}), [schema.data])
-  const currentSection = active || sectionNames[0] || ''
+  // 节清单来自后端有序数组（「机器人」在第一位）；缺省时回退 bot 保证首屏可用
+  const sectionNames = useMemo(() => (schema.data ?? []).map((s) => s.name).filter(Boolean), [schema.data])
+  const currentSection = active || sectionNames[0] || 'bot'
+
+  /** 当前节的中文标题（优先后端 schema）。 */
+  const currentTitle = useMemo(() => {
+    const fromSchema = (schema.data ?? []).find((s) => s.name === currentSection)?.title
+    return sectionTitle(currentSection, fromSchema)
+  }, [schema.data, currentSection])
 
   const sectionDirty = Boolean(dirty[currentSection])
   const originalSection = useMemo(() => {
@@ -78,7 +88,7 @@ export function BotConfigPage() {
         return next
       })
       await qc.invalidateQueries({ queryKey: ['bot-config'] })
-      toast.ok(`「${sectionTitle(currentSection)}」已保存`)
+      toast.ok(`「${currentTitle}」已保存`)
     } catch (err) {
       toast.err(err instanceof Error ? err.message : '保存失败')
     }
@@ -147,7 +157,9 @@ export function BotConfigPage() {
                     style={{ width: '100%', textAlign: 'left', justifyContent: 'space-between' }}
                     onClick={() => setActive(name)}
                   >
-                    <span className="truncate">{sectionTitle(name, schema.data?.[name]?.title)}</span>
+                    <span className="truncate">
+                      {sectionTitle(name, (schema.data ?? []).find((s) => s.name === name)?.title)}
+                    </span>
                     {isDirty ? <span className="dot dot-warn" title="有未保存修改" /> : null}
                   </button>
                 )
@@ -155,10 +167,32 @@ export function BotConfigPage() {
             </div>
           </nav>
 
-          {/* 当前节编辑器 */}
-          <div className="card" style={{ flex: 1, minWidth: 0 }}>
+          {/* 当前节编辑器（「机器人」节额外挂一张凭据卡） */}
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+            }}
+          >
+            {currentSection === 'bot' ? (
+              <BotCredentialCard
+                section={editedSection}
+                onSaved={() => {
+                  setDirty((prev) => {
+                    const next = { ...prev }
+                    delete next.bot
+                    return next
+                  })
+                  void qc.invalidateQueries({ queryKey: ['bot-config'] })
+                }}
+              />
+            ) : null}
+            <div className="card" style={{ minWidth: 0 }}>
             <div className="card-head">
-              <h3>{sectionTitle(currentSection, schema.data?.[currentSection]?.title)}</h3>
+              <h3>{currentTitle}</h3>
               <span className="mono muted-xs">{currentSection}</span>
               {sectionDirty ? <span className="badge badge-warn">未保存</span> : null}
               <span className="spacer" />
@@ -178,9 +212,121 @@ export function BotConfigPage() {
                 <p className="muted-xs">该节为空</p>
               ) : null}
             </div>
+            </div>
           </div>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+// ══════════════════ 机器人凭据（AppID / AppSecret） ══════════════════
+
+/**
+ * 机器人凭据卡片 — 单独编辑 [bot] 节的 app_id / app_secret。
+ *
+ * 这两个字段是 QQ 开放平台的机器人凭据（装配层优先读 bot_config，缺失才回退
+ * 环境变量），因此从通用键值编辑器里提出来做成独立卡片：带脱敏、独立校验与保存。
+ * 写入仍走 saveBotSection('bot', …)：读整份 → 覆盖该节 → 整份提交。
+ */
+function BotCredentialCard({
+  section,
+  onSaved,
+}: {
+  section: ConfigData
+  onSaved: () => void
+}) {
+  const [appID, setAppID] = useState(String(section.app_id ?? ''))
+  const [appSecret, setAppSecret] = useState(String(section.app_secret ?? ''))
+  const [reveal, setReveal] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  // 外部数据刷新（首屏加载 / 保存后失效重取）时同步输入框：渲染期对齐，无 effect 级联
+  const [lastExternal, setLastExternal] = useState('')
+  const externalKey = `${String(section.app_id ?? '')}\u0000${String(section.app_secret ?? '')}`
+  if (externalKey !== lastExternal) {
+    setLastExternal(externalKey)
+    setAppID(String(section.app_id ?? ''))
+    setAppSecret(String(section.app_secret ?? ''))
+  }
+
+  const configured = String(section.app_id ?? '').trim() !== ''
+
+  const save = async () => {
+    const id = appID.trim()
+    const secret = appSecret.trim()
+    if (!id || !secret) {
+      setError('应用 ID 与应用密钥都需要填写')
+      return
+    }
+    setError('')
+    setSaving(true)
+    try {
+      await saveBotSection('bot', { ...section, app_id: id, app_secret: secret })
+      toast.ok('机器人凭据已保存，请热重载或重启后生效')
+      onSaved()
+    } catch (err) {
+      toast.err(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ minWidth: 0 }}>
+      <div className="card-head">
+        <h3>机器人凭据</h3>
+        {configured ? (
+          <span className="badge badge-ok">已配置</span>
+        ) : (
+          <span className="badge badge-warn">未配置</span>
+        )}
+        <span className="spacer" />
+        <button className="btn btn-ghost btn-sm" onClick={() => setReveal(!reveal)} title={reveal ? '隐藏密钥' : '显示密钥'}>
+          {reveal ? <EyeOff /> : <Eye />} {reveal ? '隐藏' : '显示'}
+        </button>
+        <button className="btn btn-sm" onClick={() => void save()} disabled={saving}>
+          {saving ? <span className="spin" /> : <Save />} 保存凭据
+        </button>
+      </div>
+      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 520 }}>
+        {error ? <Banner kind="err">{error}</Banner> : null}
+        <div>
+          <label className="label" htmlFor="bot-app-id">
+            应用 ID（AppID）
+          </label>
+          <TextInput
+            id="bot-app-id"
+            value={appID}
+            onChange={(e) => setAppID(e.target.value)}
+            placeholder="在 QQ 开放平台创建机器人后获得"
+            autoComplete="off"
+          />
+          <p className="field-hint">
+            对应 bot_config.toml 的 <code>[bot] app_id</code>
+          </p>
+        </div>
+        <div>
+          <label className="label" htmlFor="bot-app-secret">
+            应用密钥（AppSecret）
+          </label>
+          <TextInput
+            id="bot-app-secret"
+            type={reveal ? 'text' : 'password'}
+            value={appSecret}
+            onChange={(e) => setAppSecret(e.target.value)}
+            placeholder="用于换取接口调用凭证，请勿外传"
+            autoComplete="new-password"
+          />
+          <p className="field-hint">
+            对应 bot_config.toml 的 <code>[bot] app_secret</code>
+          </p>
+        </div>
+        <p className="muted-xs">
+          凭据写盘后需热重载配置或重启主程序，QQ 网关才会用新凭据重新连接。
+        </p>
+      </div>
     </div>
   )
 }

@@ -60,7 +60,7 @@ function DailyBars({ data }: { data: DailyStat[] }) {
           <div
             key={d.day}
             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0 }}
-            title={`${d.day}：${d.requests} 次请求 · ${compactNumber(d.total_tokens)} tokens · 成本 ${d.cost.toFixed(4)}`}
+            title={`${d.day}：${d.requests} 次请求 · ${compactNumber(d.total_tokens)} 令牌 · 成本 ${d.cost.toFixed(4)}`}
           >
             <span className="muted-xs" style={{ fontSize: 10 }}>
               {d.requests > 0 ? compactNumber(d.requests) : ''}
@@ -81,7 +81,7 @@ function DailyBars({ data }: { data: DailyStat[] }) {
           </div>
         ))}
       </div>
-      <p className="muted-xs">区间 tokens 合计 {compactNumber(totalTokens)}</p>
+      <p className="muted-xs">区间令牌合计 {compactNumber(totalTokens)}</p>
     </div>
   )
 }
@@ -143,7 +143,7 @@ export function StatisticsPage() {
       <div className="page-head">
         <div>
           <h1>统计</h1>
-          <p className="page-sub">请求量 / tokens / 缓存 / 成本（范围：{active.label}）</p>
+          <p className="page-sub">请求量 / 令牌 / 缓存 / 成本（范围：{active.label}）</p>
         </div>
         <div className="page-actions">
           <div className="tabs" style={{ borderBottom: 'none' }}>
@@ -182,7 +182,7 @@ export function StatisticsPage() {
             icon={Zap}
           />
           <Metric
-            label="总 tokens"
+            label="令牌总量"
             value={compactNumber(s.total_tokens)}
             detail={`输入 ${compactNumber(s.prompt_tokens)} · 输出 ${compactNumber(s.completion_tokens)}`}
             icon={BarChart3}

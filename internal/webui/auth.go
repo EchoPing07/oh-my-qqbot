@@ -119,10 +119,10 @@ func (m *TokenManager) ensureConfig() error {
 // createDefaultPassword 写入固定默认密码（configured 来源，跨重启稳定）。
 func (m *TokenManager) createDefaultPassword() error {
 	cfg := tokenConfig{
-		AccessToken:         DefaultWebUIPassword,
-		CreatedAt:           time.Now().Format(time.RFC3339),
-		UpdatedAt:           time.Now().Format(time.RFC3339),
-		TokenSource:         TokenSourceConfigured,
+		AccessToken: DefaultWebUIPassword,
+		CreatedAt:   time.Now().Format(time.RFC3339),
+		UpdatedAt:   time.Now().Format(time.RFC3339),
+		TokenSource: TokenSourceConfigured,
 	}
 	if err := m.save(cfg); err != nil {
 		return err
@@ -229,45 +229,23 @@ func (m *TokenManager) VerifyToken(token string) bool {
 	return subtle.ConstantTimeCompare([]byte(token), []byte(current)) == 1
 }
 
-// validateCustomToken 对齐 _validate_custom_token：≥10 位且含大小写字母与特殊符号。
+// validateCustomToken 校验新登录密码。
+//
+// 简化认证：只要求「非空 + 至少 6 位 + 不含空白字符」，不再强制大小写与特殊符号组合。
+// 复杂度规则交给使用者自行决定（默认密码 admin123 本身也满足此规则）。
 func validateCustomToken(token string) (bool, string) {
 	if token == "" {
-		return false, "Token 不能为空"
+		return false, "密码不能为空"
 	}
-	if len(token) < 10 {
-		return false, "Token 长度至少为 10 位"
+	if len(token) < 6 {
+		return false, "密码长度至少为 6 位"
 	}
-	var hasUpper, hasLower, hasSpecial bool
-	const specials = "!@#$%^&*()_+-=[]{}|;:,.<>?/"
 	for _, ch := range token {
-		switch {
-		case ch >= 'A' && ch <= 'Z':
-			hasUpper = true
-		case ch >= 'a' && ch <= 'z':
-			hasLower = true
-		case stringsContainsByte(specials, byte(ch)):
-			hasSpecial = true
+		if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+			return false, "密码不能包含空格"
 		}
 	}
-	if !hasUpper {
-		return false, "Token 必须包含大写字母"
-	}
-	if !hasLower {
-		return false, "Token 必须包含小写字母"
-	}
-	if !hasSpecial {
-		return false, "Token 必须包含特殊符号 (" + specials + ")"
-	}
-	return true, "Token 格式正确"
-}
-
-func stringsContainsByte(s string, c byte) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == c {
-			return true
-		}
-	}
-	return false
+	return true, "密码格式正确"
 }
 
 // UpdateToken 更新为用户自定义固定 token（对齐 update_token）。
@@ -293,7 +271,12 @@ func (m *TokenManager) UpdateToken(newToken string) (bool, string) {
 	if len(prefix) > 8 {
 		prefix = prefix[:8]
 	}
-	slog.Info(fmt.Sprintf("Token 已更新: %s... -> %s...", prefix, newToken[:8]))
+	// 新密码可能是短密码（简化认证允许 6 位），截断前先判长度防越界。
+	suffix := newToken
+	if len(suffix) > 8 {
+		suffix = suffix[:8]
+	}
+	slog.Info(fmt.Sprintf("Token 已更新: %s... -> %s...", prefix, suffix))
 	return true, "Token 更新成功"
 }
 

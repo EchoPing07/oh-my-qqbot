@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { CircleCheck } from 'lucide-react'
 
-import { completeSetup, getSetupStatus } from '@/api/auth'
+import { completeSetup, getSetupStatusAuthorized } from '@/api/auth'
 import { getBotSection, saveBotSection } from '@/api/config'
 import { getModelConfig, saveModelConfig } from '@/api/config'
 import { postAuthTarget } from '@/router'
@@ -55,7 +55,14 @@ function SetupWizard() {
     let cancelled = false
     const run = async () => {
       try {
-        const status = await getSetupStatus()
+        // 用带 Bearer 的 authorized 版本：anon 版不带凭据，后端 /setup/status
+        // 自校验 Bearer 时永远 authenticated=false，会把已登录用户踢回 /auth。
+        const status = await getSetupStatusAuthorized()
+        if (!status) {
+          // 401：凭据确实失效，回登录页
+          navigate({ to: '/auth' })
+          return
+        }
         if (!status.authenticated) {
           navigate({ to: '/auth' })
           return
@@ -103,7 +110,7 @@ function SetupWizard() {
 
   const validateStep1 = useCallback((): string => {
     if (!model.provider_name.trim()) return '服务商名称不能为空'
-    if (!model.base_url.trim()) return 'Base URL 不能为空'
+    if (!model.base_url.trim()) return '接口地址不能为空'
     if (!model.model_identifier.trim()) return '模型标识不能为空'
     return ''
   }, [model.provider_name, model.base_url, model.model_identifier])
@@ -119,13 +126,20 @@ function SetupWizard() {
       setSaving(true)
       try {
         if (target === 0) {
+          // 以服务端整节为基础合并：避免抹掉表单未覆盖的字段（如 app_id / app_secret）
+          const [botSection, personaSection] = await Promise.all([
+            getBotSection<Record<string, unknown>>('bot'),
+            getBotSection<Record<string, unknown>>('personality'),
+          ])
           await saveBotSection('bot', {
+            ...botSection,
             nickname: basic.nickname.trim(),
             alias_names: basic.alias_names.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
             platform: basic.platform.trim() || 'qq',
             qq_account: basic.qq_account.trim(),
           })
           await saveBotSection('personality', {
+            ...personaSection,
             personality: personality.personality.trim(),
             reply_style: personality.reply_style.trim(),
           })
@@ -218,7 +232,7 @@ function SetupWizard() {
               <div>
                 <label className="label">平台</label>
                 <SelectInput value={basic.platform} onChange={(e) => setBasic({ ...basic, platform: e.target.value })}>
-                  <option value="qq">qq</option>
+                  <option value="qq">QQ</option>
                 </SelectInput>
               </div>
               <div>
@@ -266,11 +280,11 @@ function SetupWizard() {
                 <TextInput
                   value={model.provider_name}
                   onChange={(e) => setModel({ ...model, provider_name: e.target.value })}
-                  placeholder="my-provider"
+                  placeholder="例如：我的服务商"
                 />
               </div>
               <div>
-                <label className="label">Base URL *</label>
+                <label className="label">接口地址 *</label>
                 <TextInput
                   value={model.base_url}
                   onChange={(e) => setModel({ ...model, base_url: e.target.value })}
@@ -278,7 +292,7 @@ function SetupWizard() {
                 />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label className="label">API Key</label>
+                <label className="label">密钥（API Key）</label>
                 <TextInput
                   type="password"
                   value={model.api_key}
@@ -291,9 +305,9 @@ function SetupWizard() {
                 <TextInput
                   value={model.model_identifier}
                   onChange={(e) => setModel({ ...model, model_identifier: e.target.value })}
-                  placeholder="gpt-4o-mini"
+                  placeholder="例如：deepseek-v4-flash"
                 />
-                <p className="field-hint">replyer / planner / utils 任务都将路由到该模型</p>
+                <p className="field-hint">回复生成 / 决策规划 / 通用小任务 都将路由到该模型</p>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>

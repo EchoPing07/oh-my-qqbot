@@ -31,16 +31,18 @@ export async function saveModelConfig(config: ConfigData): Promise<void> {
 
 /** GET /config/schema/bot：配置节清单（前端用于渲染节导航）。 */
 export interface BotSchemaSection {
+  name: string
   type: string
   title: string
 }
 
-export async function getBotSchema(): Promise<Record<string, BotSchemaSection>> {
-  const data = await api.get<{ schema: { properties: Record<string, BotSchemaSection> } }>(
+/** GET /config/schema/bot：配置节清单（有序数组，「机器人」在第一位）。 */
+export async function getBotSchema(): Promise<BotSchemaSection[]> {
+  const data = await api.get<{ schema: { properties: BotSchemaSection[] } }>(
     '/api/webui/config/schema/bot',
     { envelope: 'raw' }
   )
-  return data.schema?.properties ?? {}
+  return data.schema?.properties ?? []
 }
 
 // ── 便捷读写：按节取/存（组装成整份配置提交，避开后端不存在的 section 端点） ──

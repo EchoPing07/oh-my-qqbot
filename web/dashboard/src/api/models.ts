@@ -30,6 +30,18 @@ export interface ProviderInfo {
   timeout: number
   retry_interval: number
   has_api_key: boolean
+  /** 该服务商下的模型清单（模型配置以服务商为单位管理） */
+  models: ProviderModelInfo[]
+}
+
+/** 服务商卡片内的单行模型摘要。 */
+export interface ProviderModelInfo {
+  name: string
+  model_identifier: string
+  visual: boolean
+  price_in: number
+  price_out: number
+  tasks: string[]
 }
 
 export async function getProviders(): Promise<ProviderInfo[]> {

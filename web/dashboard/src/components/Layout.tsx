@@ -15,7 +15,9 @@ import {
   Gauge,
   Home,
   Images,
+  Info,
   Languages,
+  LogOut,
   Menu,
   MessageSquare,
   Monitor,
@@ -27,6 +29,7 @@ import {
 } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
+import { logoutLocal } from '@/lib/token'
 import { applyTheme, readStoredTheme, storeTheme, watchSystemTheme, type ThemeMode } from '@/lib/theme'
 import { unifiedWs } from '@/lib/ws'
 
@@ -47,6 +50,7 @@ const Icon = {
   reasoning: Activity,
   transfer: FolderSync,
   settings: Settings,
+  about: Info,
 } as const
 
 interface NavItem {
@@ -65,7 +69,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: '概览',
     items: [
       { to: '/', label: '首页', icon: 'home' },
-      { to: '/chat', label: '聊天', icon: 'chat' },
+      { to: '/chat', label: '聊天管理', icon: 'chat' },
     ],
   },
   {
@@ -99,6 +103,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/data-transfer', label: '数据传输', icon: 'transfer' },
       { to: '/settings', label: '设置', icon: 'settings' },
+      { to: '/about', label: '关于', icon: 'about' },
     ],
   },
 ]
@@ -178,6 +183,13 @@ export function Layout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="side-foot">
+          <button
+            className="btn btn-ghost btn-sm btn-block"
+            onClick={() => logoutLocal()}
+            title="退出登录并清除本地凭据"
+          >
+            <LogOut /> 退出登录
+          </button>
           <ThemeButton />
         </div>
       </aside>
@@ -192,6 +204,9 @@ export function Layout({ children }: { children: ReactNode }) {
           </button>
           <span className="topbar-title">{title}</span>
           <span className="spacer" />
+          <button className="btn btn-ghost btn-sm" onClick={() => logoutLocal()} title="退出登录">
+            <LogOut /> <span className="hide-sm">退出登录</span>
+          </button>
           <ThemeButton />
         </header>
         <main className="main">{children}</main>

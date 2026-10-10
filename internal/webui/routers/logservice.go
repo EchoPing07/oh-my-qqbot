@@ -74,12 +74,22 @@ func (s *LogService) Enabled(_ context.Context, l slog.Level) bool {
 }
 
 // Handle implements slog.Handler：缓存 + 广播（字段对齐 _format_log_entry）。
+//
+// 属性拼接统一收口在这里：prefixedHandler 先把预置 attrs（WithAttrs/WithGroup）
+// 追加进 message，这里再拼 record attrs（每次调用传的 "err", err 等）。
+// 否则 record 级 attrs 会被丢弃，线上只能看到光秃秃的警告消息。
 func (s *LogService) Handle(_ context.Context, rec slog.Record) error {
+	var msg strings.Builder
+	msg.WriteString(rec.Message)
+	rec.Attrs(func(a slog.Attr) bool {
+		fmt.Fprintf(&msg, " %s=%v", a.Key, a.Value)
+		return true
+	})
 	entry := LogEntry{
 		Timestamp: s.nowFunc().Format("2006-01-02 15:04:05.000"),
 		Level:     levelName(rec.Level),
 		Module:    moduleOf(rec),
-		Message:   rec.Message,
+		Message:   msg.String(),
 	}
 	s.mu.Lock()
 	s.seq++
@@ -98,7 +108,7 @@ func (s *LogService) Handle(_ context.Context, rec slog.Record) error {
 	return nil
 }
 
-// WithAttrs implements slog.Handler（属性并入 message）。
+// WithAttrs implements slog.Handler（预置属性，Handle 统一拼接）。
 func (s *LogService) WithAttrs(attrs []slog.Attr) slog.Handler {
 	if len(attrs) == 0 {
 		return s
@@ -107,7 +117,7 @@ func (s *LogService) WithAttrs(attrs []slog.Attr) slog.Handler {
 	for _, a := range attrs {
 		fmt.Fprintf(&b, " %s=%v", a.Key, a.Value)
 	}
-	return &prefixedHandler{inner: s, prefix: b.String()}
+	return &prefixedHandler{inner: s, preset: b.String()}
 }
 
 // WithGroup implements slog.Handler。
@@ -115,13 +125,14 @@ func (s *LogService) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return s
 	}
-	return &prefixedHandler{inner: s, prefix: " [" + name + "]"}
+	return &prefixedHandler{inner: s, preset: " [" + name + "]"}
 }
 
-// prefixedHandler 把 slog 属性并入 message。
+// prefixedHandler 携带 logger.With 预置的属性；record attrs 由
+// inner.Handle 统一拼接，这里不再重复处理（避免双重拼接）。
 type prefixedHandler struct {
 	inner  *LogService
-	prefix string
+	preset string
 }
 
 func (h *prefixedHandler) Enabled(ctx context.Context, l slog.Level) bool {
@@ -129,25 +140,29 @@ func (h *prefixedHandler) Enabled(ctx context.Context, l slog.Level) bool {
 }
 
 func (h *prefixedHandler) Handle(ctx context.Context, rec slog.Record) error {
-	clone := rec.Clone()
-	clone.Message += h.prefix
-	rec.Attrs(func(a slog.Attr) bool {
-		clone.Message += fmt.Sprintf(" %s=%v", a.Key, a.Value)
-		return true
-	})
-	return h.inner.Handle(ctx, clone)
+	if h.preset != "" {
+		clone := rec.Clone()
+		clone.Message += h.preset
+		return h.inner.Handle(ctx, clone)
+	}
+	return h.inner.Handle(ctx, rec)
 }
 
 func (h *prefixedHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	for _, a := range attrs {
-		h.prefix += fmt.Sprintf(" %s=%v", a.Key, a.Value)
+	if len(attrs) == 0 {
+		return h
 	}
-	return h
+	var b strings.Builder
+	b.WriteString(h.preset)
+	for _, a := range attrs {
+		fmt.Fprintf(&b, " %s=%v", a.Key, a.Value)
+	}
+	return &prefixedHandler{inner: h.inner, preset: b.String()}
 }
 
 func (h *prefixedHandler) WithGroup(name string) slog.Handler {
 	if name != "" {
-		h.prefix += " [" + name + "]"
+		return &prefixedHandler{inner: h.inner, preset: h.preset + " [" + name + "]"}
 	}
 	return h
 }

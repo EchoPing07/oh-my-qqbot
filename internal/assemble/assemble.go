@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -328,51 +329,86 @@ func (a *App) Close(ctx context.Context) {
 func (a *App) startChannel(ctx context.Context) error {
 	global := a.Cfg.GetGlobalConfig()
 	botNames := append([]string{global.Bot.Nickname}, global.Bot.AliasNames...)
+	appID, appSecret := a.resolveChannelCredentials()
 	a.Channel = qq.NewChannel(qq.Options{
-		AppID:     os.Getenv("QQ_APP_ID"),
-		AppSecret: os.Getenv("QQ_APP_SECRET"),
+		AppID:     appID,
+		AppSecret: appSecret,
 		Sandbox:   a.opts.Sandbox,
 		BotNames:  botNames,
 		AccountID: global.Bot.QQAccount,
 		Quota:     &qq.ProactiveOptions{GroupPerMinute: 20, GroupPerDay: 1000},
 		Logger:    a.log,
 	})
-	handler := func(_ context.Context, msg *message.SessionMessage) error {
-		if msg == nil {
-			return nil
-		}
-		// 自发消息过滤（渠道层已过滤，这里再兜底一次机器人身份）。
-		if msg.MessageInfo.UserInfo.UserID == global.Bot.QQAccount {
-			return nil
-		}
-		// 入库（对齐 MessageUtils.store_message_to_db）。
-		if _, err := a.ChatManager.StoreMessageToDB(msg); err != nil {
-			a.log.Warn("消息入库失败", "err", err)
-		}
-		// 会话登记（对齐 ChatManager.register_message + get_or_create_session）。
-		if err := a.ChatManager.RegisterMessage(msg); err != nil {
-			a.log.Warn("会话登记失败", "err", err)
-		}
-		a.Bus.Emit(contracts.Event{
-			Kind:      contracts.EventMessageIngested,
-			SessionID: msg.SessionID,
-			Time:      time.Now(),
-			Payload:   map[string]any{"message_id": msg.MessageID, "user_id": msg.UserID()},
-		})
-		// 心流运行时（对齐 HeartflowManager.get_or_create_heartflow_chat）。
-		hf, err := a.Heartflow.GetOrCreateHeartflowChat(msg.SessionID)
-		if err != nil {
-			a.log.Warn("心流会话创建失败", "err", err)
-			return nil
-		}
-		hf.RegisterMessage(msg)
-		return nil
+	handler := func(ctx context.Context, msg *message.SessionMessage) error {
+		return a.handleMessage(ctx, msg)
 	}
 	go func() {
 		if err := a.Channel.Connect(ctx, handler); err != nil && !errors.Is(err, context.Canceled) {
 			a.log.Error("QQ 网关退出", "err", err)
 		}
 	}()
+	return nil
+}
+
+// resolveChannelCredentials resolves the QQ bot credentials (AppID, AppSecret).
+//
+// Priority: bot_config.toml [bot] app_id / app_secret (fillable from the WebUI
+// 「机器人设置 → 机器人」 page) with per-field fallback to the QQ_APP_ID /
+// QQ_APP_SECRET environment variables (deployment / CI convenience).
+func (a *App) resolveChannelCredentials() (string, string) {
+	global := a.Cfg.GetGlobalConfig()
+	appID := strings.TrimSpace(global.Bot.AppID)
+	if appID == "" {
+		appID = os.Getenv("QQ_APP_ID")
+	}
+	appSecret := strings.TrimSpace(global.Bot.AppSecret)
+	if appSecret == "" {
+		appSecret = os.Getenv("QQ_APP_SECRET")
+	}
+	return appID, appSecret
+}
+
+// handleMessage is the message pipeline body of the QQ channel handler
+// (extracted for testability): 入库 → 会话登记 → 会话确保存在 → 心流投递。
+// 顺序对齐 bot.py: register_message → get_or_create_session → 心流。
+func (a *App) handleMessage(_ context.Context, msg *message.SessionMessage) error {
+	if msg == nil {
+		return nil
+	}
+	global := a.Cfg.GetGlobalConfig()
+	// 自发消息过滤（渠道层已过滤，这里再兜底一次机器人身份）。
+	if msg.MessageInfo.UserInfo.UserID == global.Bot.QQAccount {
+		return nil
+	}
+	// 入库（对齐 MessageUtils.store_message_to_db）。
+	if _, err := a.ChatManager.StoreMessageToDB(msg); err != nil {
+		a.log.Warn("消息入库失败", "err", err)
+	}
+	// 会话登记（对齐 ChatManager.register_message：缓存最后一条消息并刷新会话身份）。
+	if err := a.ChatManager.RegisterMessage(msg); err != nil {
+		a.log.Warn("会话登记失败", "err", err)
+	}
+	// 会话确保存在（对齐 bot.py: get_or_create_session，在 register_message 之后调用）。
+	// RegisterMessage 只更新已存在的会话、不创建；漏掉这一步会导致
+	// GetOrCreateHeartflowChat 因查不到 session 而失败（心流会话创建失败）。
+	accountID, scope := message.SessionRouteComponents(msg.MessageInfo.AdditionalConfig)
+	if _, err := a.ChatManager.GetOrCreateSession(msg.Platform, msg.MessageInfo.UserInfo.UserID, groupIDOf(msg), accountID, scope); err != nil {
+		a.log.Warn("会话创建失败", "err", err)
+		return nil
+	}
+	a.Bus.Emit(contracts.Event{
+		Kind:      contracts.EventMessageIngested,
+		SessionID: msg.SessionID,
+		Time:      time.Now(),
+		Payload:   map[string]any{"message_id": msg.MessageID, "user_id": msg.UserID()},
+	})
+	// 心流运行时（对齐 HeartflowManager.get_or_create_heartflow_chat）。
+	hf, err := a.Heartflow.GetOrCreateHeartflowChat(msg.SessionID)
+	if err != nil {
+		a.log.Warn("心流会话创建失败", "err", err)
+		return nil
+	}
+	hf.RegisterMessage(msg)
 	return nil
 }
 
@@ -391,8 +427,6 @@ func (a *App) ToolRegistryFlags() tools.FeatureFlags {
 	}
 }
 
-
-
 func stringsHasSuffixPrivate(sessionID string) bool {
 	// session_id 无法直接判定群/私；以「最后一段为 private」判定。
 	// CalculateSessionID 对私聊生成 "..._<user_id>_private"。
@@ -400,6 +434,13 @@ func stringsHasSuffixPrivate(sessionID string) bool {
 	return len(sessionID) > len(suffix) && sessionID[len(sessionID)-len(suffix):] == suffix
 }
 
+// groupIDOf returns the group id of a session message ("" for private chats).
+func groupIDOf(msg *message.SessionMessage) string {
+	if msg == nil || msg.MessageInfo.GroupInfo == nil {
+		return ""
+	}
+	return msg.MessageInfo.GroupInfo.GroupID
+}
 
 // ---------------------------------------------------------------------------
 // bridges (config → llm / database → llm usage / llm → memorix)

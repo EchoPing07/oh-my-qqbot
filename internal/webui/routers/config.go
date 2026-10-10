@@ -167,35 +167,52 @@ func handlePutModelConfig(d *Deps) http.HandlerFunc {
 	}
 }
 
+// botSchemaSections 定义配置节的展示顺序与中文标题。
+// 「机器人」放第一位：内含 AppID / AppSecret 等首次使用必填的凭据字段。
+// 顺序敏感 — 前端节导航按此 slice 顺序渲染（服务端保持有序输出）。
+var botSchemaSections = []struct {
+	Name  string
+	Title string
+}{
+	{Name: "bot", Title: "机器人"},
+	{Name: "personality", Title: "人格"},
+	{Name: "chat", Title: "聊天"},
+	{Name: "experimental", Title: "实验性功能"},
+	{Name: "visual", Title: "视觉"},
+	{Name: "expression", Title: "表达"},
+	{Name: "jargon", Title: "黑话"},
+	{Name: "a_memorix", Title: "长期记忆"},
+	{Name: "message_receive", Title: "消息接收"},
+	{Name: "emoji", Title: "表情包"},
+	{Name: "keyword_reaction", Title: "关键词反应"},
+	{Name: "response_post_process", Title: "回复后处理"},
+	{Name: "chinese_typo", Title: "错别字"},
+	{Name: "response_splitter", Title: "断句"},
+	{Name: "log", Title: "日志"},
+	{Name: "debug", Title: "调试"},
+	{Name: "mcp", Title: "MCP"},
+	{Name: "webui", Title: "WebUI"},
+	{Name: "database", Title: "数据库"},
+}
+
 // handleGetBotSchema 对齐 GET /config/schema/bot：返回配置节清单与类型。
-// （Go 版以节名枚举替代 JSON Schema；前端用于渲染配置表单骨架。）
-func handleGetBotSchema(d *Deps) http.HandlerFunc {
+// （Go 版以节名枚举替代 JSON Schema；前端用于渲染节导航与中文标题。）
+// 用有序数组 + json.Encoder 输出，避免 Go map 无序导致节导航乱序。
+func handleGetBotSchema(_ *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		properties := make([]map[string]any, 0, len(botSchemaSections))
+		for _, s := range botSchemaSections {
+			properties = append(properties, map[string]any{
+				"name":  s.Name,
+				"type":  "object",
+				"title": s.Title,
+			})
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"schema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"bot":                   map[string]any{"type": "object", "title": "机器人"},
-					"personality":           map[string]any{"type": "object", "title": "人格"},
-					"chat":                  map[string]any{"type": "object", "title": "聊天"},
-					"experimental":          map[string]any{"type": "object", "title": "实验性功能"},
-					"visual":                map[string]any{"type": "object", "title": "视觉"},
-					"expression":            map[string]any{"type": "object", "title": "表达"},
-					"jargon":                map[string]any{"type": "object", "title": "黑话"},
-					"a_memorix":             map[string]any{"type": "object", "title": "长期记忆"},
-					"message_receive":       map[string]any{"type": "object", "title": "消息接收"},
-					"emoji":                 map[string]any{"type": "object", "title": "表情包"},
-					"keyword_reaction":      map[string]any{"type": "object", "title": "关键词反应"},
-					"response_post_process": map[string]any{"type": "object", "title": "回复后处理"},
-					"chinese_typo":          map[string]any{"type": "object", "title": "错别字"},
-					"response_splitter":     map[string]any{"type": "object", "title": "断句"},
-					"log":                   map[string]any{"type": "object", "title": "日志"},
-					"debug":                 map[string]any{"type": "object", "title": "调试"},
-					"mcp":                   map[string]any{"type": "object", "title": "MCP"},
-					"webui":                 map[string]any{"type": "object", "title": "WebUI"},
-					"database":              map[string]any{"type": "object", "title": "数据库"},
-				},
+				"type":       "object",
+				"properties": properties,
 			},
 		})
 	}

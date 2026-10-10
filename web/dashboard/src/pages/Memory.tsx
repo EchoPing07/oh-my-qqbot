@@ -248,7 +248,7 @@ function ProfilesTab() {
               <table>
                 <thead>
                   <tr>
-                    <th>person_id</th>
+                    <th>人物标识</th>
                     <th>名称</th>
                     <th className="num">认识次数</th>
                   </tr>

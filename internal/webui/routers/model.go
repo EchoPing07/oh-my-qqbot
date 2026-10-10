@@ -64,6 +64,7 @@ func handleModelsList(d *Deps) http.HandlerFunc {
 }
 
 // ProviderView 对齐 providers 视图（python 版经 /models/list-by-url 间接暴露）。
+// WebUI「模型配置」以服务商为单位管理：这里额外带上该服务商下的模型清单。
 type ProviderView struct {
 	Name          string `json:"name"`
 	BaseURL       string `json:"base_url"`
@@ -73,6 +74,29 @@ type ProviderView struct {
 	RetryInterval int    `json:"retry_interval"`
 	// HasAPIKey 隐藏密钥本身，只暴露是否存在。
 	HasAPIKey bool `json:"has_api_key"`
+	// Models 是该服务商下的模型清单（服务商为单位的管理视图用）。
+	Models []ProviderModelView `json:"models"`
+}
+
+// ProviderModelView 是服务商卡片内的单行模型摘要。
+type ProviderModelView struct {
+	Name            string   `json:"name"`
+	ModelIdentifier string   `json:"model_identifier"`
+	Visual          bool     `json:"visual"`
+	PriceIn         float64  `json:"price_in"`
+	PriceOut        float64  `json:"price_out"`
+	Tasks           []string `json:"tasks"`
+}
+
+// taskUsersByModel 统计每个模型名被哪些任务引用（模型列表与服务商视图共用）。
+func taskUsersByModel(mc *config.ModelConfig) map[string][]string {
+	taskUsers := map[string][]string{}
+	for task, tc := range mc.ModelTaskConfig.TaskConfigs() {
+		for _, name := range tc.ModelList {
+			taskUsers[name] = append(taskUsers[name], task)
+		}
+	}
+	return taskUsers
 }
 
 // handleProvidersList 返回 API 提供商清单（密钥脱敏）。
@@ -83,12 +107,32 @@ func handleProvidersList(d *Deps) http.HandlerFunc {
 			return
 		}
 		mc := d.Config.GetModelConfig()
+		taskUsers := taskUsersByModel(mc)
 		providers := make([]ProviderView, 0, len(mc.APIProviders))
 		for _, p := range mc.APIProviders {
+			models := make([]ProviderModelView, 0)
+			for _, m := range mc.Models {
+				if m.APIProvider != p.Name {
+					continue
+				}
+				tasks := taskUsers[m.Name]
+				if tasks == nil {
+					tasks = []string{}
+				}
+				models = append(models, ProviderModelView{
+					Name:            m.Name,
+					ModelIdentifier: m.ModelIdentifier,
+					Visual:          m.Visual,
+					PriceIn:         m.PriceIn,
+					PriceOut:        m.PriceOut,
+					Tasks:           tasks,
+				})
+			}
 			providers = append(providers, ProviderView{
 				Name: p.Name, BaseURL: p.BaseURL, ClientType: p.ClientType,
 				MaxRetry: p.MaxRetry, Timeout: p.Timeout, RetryInterval: p.RetryInterval,
 				HasAPIKey: p.APIKey != "" && p.APIKey != "your-api-key",
+				Models:    models,
 			})
 		}
 		ok(w, map[string]any{"providers": providers, "count": len(providers)})
