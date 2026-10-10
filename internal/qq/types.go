@@ -257,6 +257,9 @@ func (a Attachment) Kind() string {
 		return "voice"
 	case contentType == "video" || strings.HasPrefix(contentType, "video/"):
 		return "video"
+	case strings.HasPrefix(contentType, "audio/"):
+		// P3c: audio/* MIME 归为语音 (对齐 Diana), 旧实现落到了 file。
+		return "voice"
 	case contentType == "file":
 		return "file"
 	}

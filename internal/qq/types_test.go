@@ -263,6 +263,8 @@ func TestAttachmentKinds(t *testing.T) {
 		{Attachment{ContentType: "image/png"}, "image"},
 		{Attachment{ContentType: "image/gif"}, "image"},
 		{Attachment{ContentType: "voice", AsrReferText: "转写文本"}, "voice"},
+		{Attachment{ContentType: "audio/silk", AsrReferText: "语音转写"}, "voice"},
+		{Attachment{ContentType: "audio/amr"}, "voice"},
 		{Attachment{ContentType: "video"}, "video"},
 		{Attachment{ContentType: "file", Filename: "a.pdf"}, "file"},
 		{Attachment{ContentType: "", Filename: "b.PNG"}, "image"},

@@ -504,10 +504,10 @@ func (c *Client) Chat(ctx context.Context, req contracts.ChatRequest, options Ch
 		body.PromptCacheKey = options.PromptCacheKey
 	}
 	if options.ParallelToolCalls != nil {
+		// L10 修复：仅当调用方显式提供时才发送 parallel_tool_calls。此前带
+		// tools 的请求默认强发 false，Python 版（openai_client.py）从不发送
+		// 该字段，部分兼容网关会因该字段直接 400。
 		body.ParallelToolCalls = options.ParallelToolCalls
-	} else if len(req.Tools) > 0 {
-		parallel := false
-		body.ParallelToolCalls = &parallel
 	}
 	for key, value := range req.ExtraParams {
 		c.applyExtraBody(&body, key, value)
@@ -560,9 +560,12 @@ func (c *Client) Chat(ctx context.Context, req contracts.ChatRequest, options Ch
 	}
 	for _, call := range choice.Message.ToolCalls {
 		response.ToolCalls = append(response.ToolCalls, contracts.ToolCall{
-			ID:       call.ID,
-			Name:     call.Function.Name,
-			ArgsJSON: defaultJSONObject(call.Function.Arguments),
+			ID:   call.ID,
+			Name: call.Function.Name,
+			// L11 修复：保留 arguments 原文（非法 JSON 不在客户端静默替换为
+			// "{}"），由上层 planner 显式判定解析失败并返回工具回执错误；历史
+			// 投影阶段（convertMessages/MessagesToItems）再做兜底替换 + 告警。
+			ArgsJSON: strings.TrimSpace(call.Function.Arguments),
 		})
 	}
 	if strings.TrimSpace(response.Content) == "" && len(response.ToolCalls) == 0 && strings.TrimSpace(choice.Message.Refusal) == "" {

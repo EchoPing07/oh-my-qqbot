@@ -30,6 +30,12 @@ const (
 	maxConnectTimeout     = 60 * time.Second
 	stdioConnectTimeout   = 30 * time.Second
 	connectTimeoutPadding = 5 * time.Second
+
+	// loadServerFeaturesTimeout 是能力发现（tools/prompts/resources 列表拉取）
+	// 的整体超时（L14：此前直接继承调用方 context——connect 分支里是
+	// detachContext 产物、无 deadline，服务端对 tools/list 不响应时会无限
+	// 阻塞启动。30s 与 stdio 建连超时对齐）。
+	loadServerFeaturesTimeout = 30 * time.Second
 )
 
 // errNilCommand 表示 stdio 传输缺少可执行命令。
@@ -408,10 +414,14 @@ func (c *connection) loadServerFeatures(ctx context.Context) error {
 	if session == nil {
 		return errors.New("MCP 会话未建立")
 	}
+	// L14 修复：包一层整体超时，服务端列表接口挂起时不会无限阻塞建连流程
+	// 与启动（超时按连接失败处理，错误写入 lastError）。
+	featuresCtx, cancel := context.WithTimeout(ctx, loadServerFeaturesTimeout)
+	defer cancel()
 
 	tools := make([]*mcp.Tool, 0)
 	if c.supportsTools() {
-		for tool, err := range session.Tools(ctx, nil) {
+		for tool, err := range session.Tools(featuresCtx, nil) {
 			if err != nil {
 				return fmt.Errorf("加载工具失败: %w", err)
 			}
@@ -424,7 +434,7 @@ func (c *connection) loadServerFeatures(ctx context.Context) error {
 	resourceTemplates := make([]*mcp.ResourceTemplate, 0)
 
 	if c.supportsPrompts() {
-		for prompt, err := range session.Prompts(ctx, nil) {
+		for prompt, err := range session.Prompts(featuresCtx, nil) {
 			if err != nil {
 				return fmt.Errorf("加载 Prompt 失败: %w", err)
 			}
@@ -432,7 +442,7 @@ func (c *connection) loadServerFeatures(ctx context.Context) error {
 		}
 	}
 	if c.supportsResources() {
-		for resource, err := range session.Resources(ctx, nil) {
+		for resource, err := range session.Resources(featuresCtx, nil) {
 			if err != nil {
 				return fmt.Errorf("加载资源失败: %w", err)
 			}
@@ -440,7 +450,7 @@ func (c *connection) loadServerFeatures(ctx context.Context) error {
 		}
 		// list_resource_templates 是 OPTIONAL 能力:未实现时按空集合处理，
 		// 不能毁掉整个连接(对齐 _load_resource_templates 的 METHOD_NOT_FOUND 分支)。
-		for template, err := range session.ResourceTemplates(ctx, nil) {
+		for template, err := range session.ResourceTemplates(featuresCtx, nil) {
 			if err != nil {
 				break
 			}

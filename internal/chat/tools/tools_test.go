@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -787,5 +788,47 @@ func TestRegistryWiredWaitToolExecutes(t *testing.T) {
 	}
 	if rt.wait.lastTurnID != "turn_1" || rt.wait.lastCallID != "call_1" {
 		t.Fatalf("LogicalTurnID/CallID 应透传: turn=%q call=%q", rt.wait.lastTurnID, rt.wait.lastCallID)
+	}
+}
+
+// TestDiscoveredMapConcurrentAccess 验证 L7：共享 registry 的 discovered map
+// 必须可并发读写。本机无 gcc、-race 不可用，因此用并发压力测试代替竞态检测
+// ——无锁的并发 map 写会直接触发 runtime fatal（"concurrent map writes"），
+// 压测足以暴露回归。
+func TestDiscoveredMapConcurrentAccess(t *testing.T) {
+	registry := NewToolRegistry(BuiltinEntries(FeatureFlags{}, nil))
+	const goroutines = 32
+	const rounds = 50
+	var waitGroup sync.WaitGroup
+	for index := 0; index < goroutines; index++ {
+		waitGroup.Add(1)
+		go func(index int) {
+			defer waitGroup.Done()
+			for round := 0; round < rounds; round++ {
+				switch index % 4 {
+				case 0:
+					registry.DiscoverDeferredTools([]string{"view_forward_message"})
+				case 1:
+					_ = registry.DiscoveredToolSpecs()
+				case 2:
+					_ = registry.BuildDeferredToolsReminder()
+				default:
+					_ = registry.SearchDeferredToolSpecs("forward", 5)
+				}
+			}
+		}(index)
+	}
+	waitGroup.Wait()
+
+	// 收敛校验：全部发现后 DiscoveredToolSpecs 应包含 view_forward_message。
+	registry.DiscoverDeferredTools([]string{"view_forward_message"})
+	found := false
+	for _, spec := range registry.DiscoveredToolSpecs() {
+		if spec.Name == "view_forward_message" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("并发发现后 view_forward_message 应出现在已发现列表中")
 	}
 }

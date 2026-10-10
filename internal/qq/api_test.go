@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // ---------------------------------------------------------------------------
@@ -129,6 +130,11 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 				"ext_info": map[string]any{"ref_idx": "REFIDX_OUT_" + itoa(n)},
 			})
 		default:
+			// B1: 专门提供一个返回 JSON 数组的端点。
+			if strings.HasSuffix(r.URL.Path, "/array") {
+				writeJSON(w, http.StatusOK, []map[string]any{{"id": "G1"}, {"id": "G2"}})
+				return
+			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		}
 	})
@@ -557,6 +563,106 @@ func TestCallAPI(t *testing.T) {
 	}
 	if _, err := client.CallAPI(context.Background(), "", nil); err == nil {
 		t.Fatal("空 action 应报错")
+	}
+}
+
+// TestSendUnauthorizedTwiceReturnsError 校验 A1: 连续两次 401 必须显式报错 ——
+// 旧实现循环耗尽后返回 nil 错误, 上层把失败当成功 (空 MessageID), 已扣的额度
+// / 被动次数也不回滚。
+func TestSendUnauthorizedTwiceReturnsError(t *testing.T) {
+	api := newFakeAPI(t)
+	client := newTestClient(t, api)
+	api.setUnauthorized(2)
+
+	_, err := client.Send(context.Background(), SendRequest{
+		Target:   OutboundTarget{GroupID: "G1"},
+		Text:     "你好",
+		Decision: SendDecision{Mode: ModeProactive},
+	})
+	if err == nil {
+		t.Fatal("两次 401 应返回错误, 而不是假成功")
+	}
+	apiErr, ok := AsAPIError(err)
+	if !ok {
+		t.Fatalf("应返回 *APIError, got %T: %v", err, err)
+	}
+	if apiErr.Status != http.StatusUnauthorized {
+		t.Fatalf("错误应带 http 401 状态: %+v", apiErr)
+	}
+	// 首次请求 + 刷 token 后重试, 共 2 次; 第二次仍 401 即报错, 不再刷 token。
+	if got := api.tokenCallCount(); got != 2 {
+		t.Fatalf("应只多刷一次 token, got %d", got)
+	}
+	if posts := api.postsSnapshot(); len(posts) != 2 {
+		t.Fatalf("应恰好请求 2 次, got %d", len(posts))
+	}
+}
+
+// TestCallAPIArrayResponseWrapped 校验 B1: 成功响应是 JSON 数组等非对象时, 包一层
+// {"result": <原始 JSON>} 返回, 不再整单报错 (对齐 Diana)。
+func TestCallAPIArrayResponseWrapped(t *testing.T) {
+	api := newFakeAPI(t)
+	client := newTestClient(t, api)
+	out, err := client.CallAPI(context.Background(), "GET /users/@me/guilds/array", nil)
+	if err != nil {
+		t.Fatalf("数组响应不应报错: %v", err)
+	}
+	raw, ok := out["result"].(json.RawMessage)
+	if !ok {
+		t.Fatalf("应包含 result 键: %v", out)
+	}
+	var items []map[string]any
+	if err := json.Unmarshal(raw, &items); err != nil {
+		t.Fatalf("result 应是原始数组 JSON: %v", err)
+	}
+	if len(items) != 2 || items[0]["id"] != "G1" || items[1]["id"] != "G2" {
+		t.Fatalf("数组内容不符: %v", items)
+	}
+}
+
+// TestCallRESTDoesNotPolluteOutOnRetry 校验 B5: 429/5xx 重试场景下, 失败响应体
+// 不解析进出参, 重试成功后出参没有残留旧键。
+func TestCallRESTDoesNotPolluteOutOnRetry(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_ = json.NewEncoder(w).Encode(map[string]any{"junk": "stale"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(APIOptions{AppID: "A", AppSecret: "S"})
+	hijackToken(t, client)
+
+	out := map[string]any{}
+	if err := client.callREST(context.Background(), http.MethodGet, server.URL, nil, &out); err != nil {
+		t.Fatalf("重试后应成功: %v", err)
+	}
+	if _, ok := out["junk"]; ok {
+		t.Fatalf("429 响应体不应污染出参: %v", out)
+	}
+	if out["ok"] != true {
+		t.Fatalf("成功响应应写进出参: %v", out)
+	}
+}
+
+// TestTruncateRuneSafe 校验 P3b: truncate 按 rune 边界截断, 不切碎 UTF-8。
+func TestTruncateRuneSafe(t *testing.T) {
+	if got := truncate("你好世界", 5); got != "你…" {
+		t.Fatalf("多字节截断不符: %q", got)
+	}
+	if got := truncate("abcdef", 3); got != "abc…" {
+		t.Fatalf("ASCII 截断不符: %q", got)
+	}
+	if got := truncate("ab", 5); got != "ab" {
+		t.Fatalf("不超限应原样返回: %q", got)
+	}
+	if !utf8.ValidString(truncate("你好世界", 4)) {
+		t.Fatal("截断结果必须是合法 UTF-8")
 	}
 }
 

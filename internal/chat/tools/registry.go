@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // This file mirrors the ToolSpec/ToolInvocation/ToolExecutionResult surfaces of
@@ -216,7 +217,11 @@ type ToolRegistry struct {
 	entries        []BuiltinToolEntry
 	handlers       map[string]Handler
 	deferredByName map[string]ToolSpec
-	discovered     map[string]bool
+	// discovered 记录已发现的 deferred tools。共享注册表会被多个会话并发
+	// 访问（tool_search 并发发现），读写都必须持锁，否则并发写 map 直接
+	// fatal（Go runtime 的 "concurrent map writes"）。
+	discoveredMu sync.Mutex
+	discovered   map[string]bool
 }
 
 // NewToolRegistry builds a registry from the builtin entries.
@@ -275,9 +280,16 @@ func (r *ToolRegistry) DeferredToolSpecs() []ToolSpec {
 
 // DiscoveredToolSpecs mirrors get_discovered_deferred_tool_specs.
 func (r *ToolRegistry) DiscoveredToolSpecs() []ToolSpec {
+	r.discoveredMu.Lock()
+	discoveredSnapshot := make(map[string]bool, len(r.discovered))
+	for name, found := range r.discovered {
+		discoveredSnapshot[name] = found
+	}
+	r.discoveredMu.Unlock()
+
 	specs := make([]ToolSpec, 0)
 	for name, spec := range r.deferredByName {
-		if r.discovered[name] {
+		if discoveredSnapshot[name] {
 			specs = append(specs, spec)
 		}
 	}
@@ -288,9 +300,16 @@ func (r *ToolRegistry) DiscoveredToolSpecs() []ToolSpec {
 // BuildDeferredToolsReminder mirrors runtime.build_deferred_tools_reminder
 // （文案照抄）。
 func (r *ToolRegistry) BuildDeferredToolsReminder() string {
+	r.discoveredMu.Lock()
+	undiscoveredSnapshot := make(map[string]bool, len(r.discovered))
+	for name, found := range r.discovered {
+		undiscoveredSnapshot[name] = found
+	}
+	r.discoveredMu.Unlock()
+
 	var undiscovered []ToolSpec
 	for name, spec := range r.deferredByName {
-		if !r.discovered[name] {
+		if !undiscoveredSnapshot[name] {
 			undiscovered = append(undiscovered, spec)
 		}
 	}
@@ -392,6 +411,8 @@ func (r *ToolRegistry) SearchDeferredToolSpecs(query string, limit int) []ToolSp
 // 将指定 deferred tools 标记为已发现，并返回本次新发现的工具名。
 func (r *ToolRegistry) DiscoverDeferredTools(toolNames []string) []string {
 	newlyDiscovered := make([]string, 0)
+	r.discoveredMu.Lock()
+	defer r.discoveredMu.Unlock()
 	for _, rawToolName := range toolNames {
 		normalized := strings.TrimSpace(rawToolName)
 		if normalized == "" {

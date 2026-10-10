@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -90,7 +91,13 @@ func NewOrchestrator(options OrchestratorOptions) *Orchestrator {
 
 // Config returns the live model configuration (re-read on every request so hot
 // reloads take effect, mirroring _refresh_task_config).
-func (o *Orchestrator) Config() ModelConfig { return o.options.Config }
+// L5 修复：与 SetConfig（持锁写）配套，读也必须持锁，否则热重载与并发请求
+// 对 options.Config 构成数据竞争。
+func (o *Orchestrator) Config() ModelConfig {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.options.Config
+}
 
 // SetConfig swaps the model configuration (hot reload entry point).
 func (o *Orchestrator) SetConfig(config ModelConfig) {
@@ -104,7 +111,12 @@ func (o *Orchestrator) SetConfig(config ModelConfig) {
 func (o *Orchestrator) WaitForUsage() { o.usageWrites.Wait() }
 
 // SetSessionID updates the default accounting session id.
-func (o *Orchestrator) SetSessionID(sessionID string) { o.options.SessionID = sessionID }
+// L5 修复：写入纳入 o.mu（resolveSessionID 侧同样持锁读取）。
+func (o *Orchestrator) SetSessionID(sessionID string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.options.SessionID = sessionID
+}
 
 // ---------------------------------------------------------------------------
 // internal.LLMLayer implementation
@@ -272,13 +284,23 @@ func (o *Orchestrator) attemptWithTimeout(
 	defer cancel()
 
 	var (
-		response   *contracts.ChatResponse
-		embeddings [][]float32
-		err        error
+		response      *contracts.ChatResponse
+		embeddings    [][]float32
+		embeddingUsed *contracts.Usage
+		err           error
 	)
 	if params.Embedding != nil {
 		options := o.embeddingOptions(model, params)
-		embeddings, err = client.Embeddings(attemptCtx, model, params.Embedding, options)
+		// L12 修复：改用 EmbeddingsWithUsage，把 /embeddings 响应的 usage 交给
+		// recordUsage 落库（此前 embeddings 分支 response 恒为 nil，usage 被丢弃）。
+		var embedResult *EmbeddingResult
+		embedResult, err = client.EmbeddingsWithUsage(attemptCtx, model, params.Embedding, options)
+		if err == nil {
+			embeddings = embedResult.Vectors
+			if embedResult.Usage.PromptTokens != 0 || embedResult.Usage.TotalTokens != 0 {
+				embeddingUsed = &embedResult.Usage
+			}
+		}
 	} else {
 		response, err = o.attemptChat(attemptCtx, client, model, taskConfig, params)
 	}
@@ -300,6 +322,8 @@ func (o *Orchestrator) attemptWithTimeout(
 	}
 	if response != nil {
 		o.recordUsage(ctx, params, result, response.Usage, timeCost)
+	} else if embeddingUsed != nil {
+		o.recordUsage(ctx, params, result, *embeddingUsed, timeCost)
 	}
 	return result, nil
 }
@@ -325,8 +349,11 @@ func (o *Orchestrator) attemptChat(
 	request.Model = model.ModelIdentifier
 	// Effective request parameters follow _resolve_effective_max_tokens /
 	// _resolve_effective_temperature (explicit → model → extra_params → task).
+	// L9 修复：调用方显式传入的 temperature 优先于模型/任务配置
+	// （对齐 Python utils_model.py _resolve_effective_temperature 的
+	// `if temperature is not None: return temperature` 分支）。
 	request.MaxTokens = resolveMaxTokens(model, taskConfig, params.Request.MaxTokens)
-	request.Temperature = resolveTemperature(model, taskConfig)
+	request.Temperature = resolveTemperature(model, taskConfig, params.Request.Temperature)
 	messages := request.Messages
 	if len(o.options.PrefixMessages) > 0 {
 		// Prefix messages are stored once and reused; copy the slice so
@@ -439,7 +466,9 @@ func (o *Orchestrator) recordUsage(ctx context.Context, params executeParams, re
 	go func() {
 		defer o.usageWrites.Done()
 		// Usage accounting must never fail or delay a chat request.
-		_ = o.options.Recorder.Record(context.WithoutCancel(ctx), RecordParams{
+		// L13 修复：落库失败不再静默（`_ =`），降级为 Warn 日志以便排查
+		// 计量缺失（请求本身不受影响）。
+		if err := o.options.Recorder.Record(context.WithoutCancel(ctx), RecordParams{
 			Model:            result.Model,
 			Provider:         result.Provider,
 			Usage:            usage,
@@ -449,7 +478,9 @@ func (o *Orchestrator) recordUsage(ctx context.Context, params executeParams, re
 			TimeCost:         timeCost.Seconds(),
 			RequestStartedAt: result.RequestStartedAt,
 			Success:          true,
-		})
+		}); err != nil {
+			slog.Warn("llm: usage 记录写入失败", "task", params.Task, "model", result.Model.Name, "err", err)
+		}
 	}()
 }
 
@@ -516,7 +547,9 @@ func (o *Orchestrator) selectModel(
 		selected = requested
 	case strategy == SelectionRandom:
 		candidates := sortedKeys(available)
-		selected = candidates[o.options.Rand.Intn(len(candidates))]
+		// L5 修复：rand.Rand 非并发安全，Intn 必须在 o.mu 保护内调用
+		//（此前在 Unlock 之后调用，多任务并发随机选型时存在数据竞争）。
+		selected = candidates[o.randIntn(len(candidates))]
 	case strategy == SelectionSequential:
 		for _, name := range taskConfig.ModelList {
 			if _, ok := available[name]; ok {
@@ -600,7 +633,21 @@ func (o *Orchestrator) clientFor(provider APIProvider) *Client {
 	return client
 }
 
+// randIntn 在 o.mu 保护内调用注入的 *rand.Rand（L5：rand.Rand 非并发安全，
+// 多任务并发随机选型时必须串行化）。
+func (o *Orchestrator) randIntn(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.options.Rand.Intn(n)
+}
+
 func (o *Orchestrator) resolveSessionID(override string) string {
+	// L5 修复：SessionID 会被 SetSessionID 并发改写，读取纳入 o.mu。
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	return strings.TrimSpace(firstNonEmpty(override, o.options.SessionID))
 }
 
@@ -628,9 +675,14 @@ func resolveMaxTokens(model ModelInfo, taskConfig TaskConfig, explicit int) int 
 
 // resolveTemperature mirrors _resolve_effective_temperature, including the
 // `send_temperature = false` escape hatch (returns nil → field omitted).
-func resolveTemperature(model ModelInfo, taskConfig TaskConfig) *float64 {
+// L9 修复：新增 explicit 入参——调用方显式指定的 temperature 优先于模型
+// temperature 与 extra_params（对齐 Python _resolve_effective_temperature）。
+func resolveTemperature(model ModelInfo, taskConfig TaskConfig, explicit *float64) *float64 {
 	if !model.SendsTemperature() {
 		return nil
+	}
+	if explicit != nil {
+		return explicit
 	}
 	if model.Temperature != nil {
 		return model.Temperature

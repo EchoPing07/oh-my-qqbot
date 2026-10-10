@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -272,4 +273,206 @@ func TestOrchestratorEmbedRecoversFromSingleModelFailure(t *testing.T) {
 	if len(recorded) != 2 || recorded[1].Body["model"] != "fast-model" {
 		t.Fatalf("requests = %#v", recorded)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// L5/L9/L10/L12/L13 回归测试
+// ---------------------------------------------------------------------------
+
+// TestResolveTemperatureExplicitWins 对齐 Python _resolve_effective_temperature：
+// 调用方显式传入的 temperature 优先于模型配置与任务配置（L9）。
+func TestResolveTemperatureExplicitWins(t *testing.T) {
+	model := ModelInfo{Name: "m", Temperature: Float64Ptr(0.1)}
+	task := TaskConfig{Temperature: Float64Ptr(0.7)}
+	explicit := 0.9
+
+	if got := resolveTemperature(model, task, &explicit); got == nil || *got != 0.9 {
+		t.Fatalf("显式 temperature 应最高优先: got %v", got)
+	}
+	if got := resolveTemperature(model, task, nil); got == nil || *got != 0.1 {
+		t.Fatalf("无显式值时应回落到模型 temperature: got %v", got)
+	}
+	if got := resolveTemperature(ModelInfo{Name: "m"}, task, &explicit); got == nil || *got != 0.9 {
+		t.Fatalf("send_temperature 默认 true 时显式值应生效: got %v", got)
+	}
+	if got := resolveTemperature(ModelInfo{SendTemperature: BoolPtr(false)}, task, &explicit); got != nil {
+		t.Fatalf("send_temperature=false 应丢弃字段（含显式值）: got %v", got)
+	}
+}
+
+// TestChatRequestExplicitTemperatureWins 走完整请求链路验证 L9：请求里的
+// 显式 temperature 覆盖模型/任务配置。
+func TestChatRequestExplicitTemperatureWins(t *testing.T) {
+	provider := newMockProvider(t, func(int, map[string]any) (int, any) {
+		return 200, completionPayload("ok", nil)
+	})
+	orchestrator := newTestOrchestrator(t, provider, func(config *ModelConfig) {
+		model := config.Models["fast"]
+		model.Temperature = Float64Ptr(0.1)
+		config.Models["fast"] = model
+	}, nil)
+
+	explicit := 0.9
+	if _, err := orchestrator.Chat(context.Background(), "utils", contracts.ChatRequest{
+		Messages:    []contracts.ChatMessage{{Role: RoleUser, Content: "hi"}},
+		Temperature: &explicit,
+	}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if got := provider.recorded()[0].Body["temperature"]; got != 0.9 {
+		t.Fatalf("body temperature = %v, want 0.9（显式值优先）", got)
+	}
+
+	// 无显式值时回落模型配置。
+	if _, err := orchestrator.Chat(context.Background(), "utils", contracts.ChatRequest{
+		Messages: []contracts.ChatMessage{{Role: RoleUser, Content: "hi"}},
+	}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if got := provider.recorded()[1].Body["temperature"]; got != 0.1 {
+		t.Fatalf("body temperature = %v, want 0.1（模型配置）", got)
+	}
+}
+
+// TestParallelToolCallsOnlySentExplicitly 验证 L10：parallel_tool_calls 仅在
+// 调用方显式提供 ChatOptions.ParallelToolCalls 时发送；默认（含带 tools 的
+// 请求）一律省略，对齐 Python openai_client（部分网关会对该字段 400）。
+func TestParallelToolCallsOnlySentExplicitly(t *testing.T) {
+	provider := newMockProvider(t, func(int, map[string]any) (int, any) {
+		return 200, completionPayload("ok", nil)
+	})
+	client := NewClient(APIProvider{Name: "mock", BaseURL: provider.server.URL + "/v1", APIKey: "k"}, provider.server.Client())
+	request := contracts.ChatRequest{
+		Model:    "fast-model",
+		Messages: []contracts.ChatMessage{{Role: RoleUser, Content: "hi"}},
+		Tools:    []contracts.ToolSpec{{Name: "reply", Description: "d", ParametersJSON: `{"type":"object"}`}},
+	}
+
+	if _, err := client.Chat(context.Background(), request, ChatOptions{}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if _, exists := provider.recorded()[0].Body["parallel_tool_calls"]; exists {
+		t.Fatalf("带 tools 的默认请求不应发送 parallel_tool_calls: %#v", provider.recorded()[0].Body)
+	}
+
+	enabled := true
+	if _, err := client.Chat(context.Background(), request, ChatOptions{ParallelToolCalls: &enabled}); err != nil {
+		t.Fatalf("Chat explicit: %v", err)
+	}
+	if got := provider.recorded()[1].Body["parallel_tool_calls"]; got != true {
+		t.Fatalf("显式 parallel_tool_calls 应透传: %v", got)
+	}
+}
+
+// TestEmbedUsageRecorded 验证 L12：embedding 响应的 usage 必须交给
+// UsageRecorder 落库（此前 response 恒 nil，usage 被静默丢弃）。
+func TestEmbedUsageRecorded(t *testing.T) {
+	provider := newMockProvider(t, func(int, map[string]any) (int, any) {
+		return 200, map[string]any{
+			"data": []map[string]any{{"index": 0, "embedding": []float32{1, 2, 3}}},
+			"usage": map[string]any{
+				"prompt_tokens": 7, "total_tokens": 7,
+			},
+		}
+	})
+	var mu sync.Mutex
+	var recorded []ModelUsage
+	orchestrator := newTestOrchestrator(t, provider, nil, func(options *OrchestratorOptions) {
+		options.Recorder = NewUsageRecorder(UsageWriterFunc(func(_ context.Context, usage ModelUsage) error {
+			mu.Lock()
+			defer mu.Unlock()
+			recorded = append(recorded, usage)
+			return nil
+		}))
+	})
+
+	if _, err := orchestrator.Embed(context.Background(), []string{"a"}); err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+	orchestrator.WaitForUsage()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(recorded) != 1 {
+		t.Fatalf("embedding usage 落库条数 = %d, want 1", len(recorded))
+	}
+	if recorded[0].PromptTokens != 7 || recorded[0].TotalTokens != 7 {
+		t.Fatalf("embedding usage = %#v, want prompt=7 total=7", recorded[0])
+	}
+}
+
+// TestUsageRecordFailureDoesNotBreakRequest 验证 L13：usage 落库失败只打
+// Warn 日志，不影响请求成功返回（此前 `_ =` 静默吞错）。
+func TestUsageRecordFailureDoesNotBreakRequest(t *testing.T) {
+	provider := newMockProvider(t, func(int, map[string]any) (int, any) {
+		return 200, completionPayload("ok", map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
+	})
+	orchestrator := newTestOrchestrator(t, provider, nil, func(options *OrchestratorOptions) {
+		options.Recorder = NewUsageRecorder(UsageWriterFunc(func(context.Context, ModelUsage) error {
+			return fmt.Errorf("db closed")
+		}))
+	})
+	response, err := orchestrator.Chat(context.Background(), "utils", contracts.ChatRequest{
+		Messages: []contracts.ChatMessage{{Role: RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("usage 写入失败不应影响请求: %v", err)
+	}
+	if response.Content != "ok" {
+		t.Fatalf("response = %#v", response)
+	}
+	orchestrator.WaitForUsage()
+}
+
+// TestOrchestratorConcurrentHotSwapAndRandomSelection 是 L5 的并发压力测试
+// （本机无 gcc、-race 不可用，用高压并发代替竞态检测）：多 goroutine 同时
+// 随机选型（rand.Rand 共享）+ 热重载 SetConfig + SetSessionID，任何未持锁
+// 的共享状态访问都会触发崩溃或异常结果。
+func TestOrchestratorConcurrentHotSwapAndRandomSelection(t *testing.T) {
+	provider := newMockProvider(t, func(int, map[string]any) (int, any) {
+		return 200, completionPayload("ok", map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
+	})
+	base := testModelConfig(provider.server.URL, func(config *ModelConfig) {
+		// 随机策略 + 多模型，迫使每次请求都走 Rand.Intn（L5 的竞争点）。
+		config.Tasks["utils"] = TaskConfig{
+			ModelList: []string{"fast", "pro"}, MaxTokens: 64, Temperature: Float64Ptr(0.5),
+			SelectionStrategy: SelectionRandom, HardTimeout: 5,
+		}
+	})
+	orchestrator := NewOrchestrator(OrchestratorOptions{
+		Config:     base,
+		HTTPClient: provider.server.Client(),
+		Sleep:      func(context.Context, time.Duration) error { return nil },
+	})
+
+	var waitGroup sync.WaitGroup
+	for index := 0; index < 48; index++ {
+		waitGroup.Add(1)
+		go func(index int) {
+			defer waitGroup.Done()
+			for round := 0; round < 8; round++ {
+				// 并发热重载与 session 改写（L5 的另两个竞争点）。
+				if index%8 == 0 {
+					orchestrator.SetConfig(testModelConfig(provider.server.URL, func(config *ModelConfig) {
+						config.Tasks["utils"] = TaskConfig{
+							ModelList: []string{"fast", "pro"}, MaxTokens: 64, Temperature: Float64Ptr(0.5),
+							SelectionStrategy: SelectionRandom, HardTimeout: 5,
+						}
+					}))
+				}
+				if index%8 == 1 {
+					orchestrator.SetSessionID(fmt.Sprintf("session-%d-%d", index, round))
+				}
+				if _, err := orchestrator.Chat(context.Background(), "utils", contracts.ChatRequest{
+					Messages: []contracts.ChatMessage{{Role: RoleUser, Content: "hi"}},
+				}); err != nil {
+					t.Errorf("并发 Chat 失败: %v", err)
+					return
+				}
+				// Config() 与 SetConfig 并发读写（L5）。
+				_ = orchestrator.Config().Tasks
+			}
+		}(index)
+	}
+	waitGroup.Wait()
+	orchestrator.WaitForUsage()
 }

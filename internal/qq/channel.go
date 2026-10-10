@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,17 @@ const (
 	readyTimeout = 15 * time.Second
 	// readLimit 是单帧读取上限。
 	readLimit = 4 << 20
+	// heartbeatFailLimit 是连续心跳无 ACK / 写失败的容忍次数, 超过即主动断开重连
+	// (A2, 对齐 参考/qq-official-adapter/core/gateway.py 的 HEARTBEAT_FAIL_LIMIT)。
+	heartbeatFailLimit = 2
+	// reconnectResetAfter 是重连退避复位的会话存活阈值: 会话健康跑了这么久,
+	// 下一次断线的退避从头算 (P3a)。
+	reconnectResetAfter = 10 * time.Minute
+	// inboundDedupTTL 是入站消息去重缓存的保留时长 (A3, 对齐 gateway.py 的
+	// INBOUND_MESSAGE_DEDUP_TTL_SEC = 600s)。
+	inboundDedupTTL = 10 * time.Minute
+	// inboundDedupCap 限制去重缓存条数, 防止长期运行无限增长。
+	inboundDedupCap = 4096
 )
 
 // ErrNotConfigured 是凭据缺失时 Connect 返回的错误。
@@ -64,9 +76,11 @@ type Options struct {
 	// AccountID / Scope 是 session_id 的可选路由组件 (多开时区分)。
 	AccountID string
 	Scope     string
-	// PassiveWindow 覆盖被动回复有效期; <=0 用 5 分钟。
+	// PassiveWindow 覆盖被动回复有效期; <=0 按会话类型取默认 (群聊 5 分钟,
+	// 单聊 60 分钟, 见 B2)。
 	PassiveWindow time.Duration
-	// PassiveMaxReplies 覆盖同一条消息的被动回复次数上限; <=0 用 5。
+	// PassiveMaxReplies 覆盖同一条消息的被动回复次数上限; <=0 按会话类型取默认
+	// (群聊 5 次, 单聊 4 次, 见 B2)。
 	PassiveMaxReplies int
 	// Logger 是结构化日志; nil 用 slog.Default()。
 	Logger *slog.Logger
@@ -135,6 +149,8 @@ type Channel struct {
 	status    Status
 	gateway   string
 	dialer    *websocket.Dialer
+	// seen 是入站消息去重缓存 (A3): 官方会重复推送相同 msg_id, RESUME 重放也会重复。
+	seen *seenInbound
 }
 
 // NewChannel 创建一个 QQ 官方通道。
@@ -167,6 +183,7 @@ func NewChannel(opts Options) *Channel {
 		quota:  NewProactiveLedger(quotaOpts),
 		refs:   NewRefLedger(0, 0),
 		sent:   NewSentLedger(0, 0),
+		seen:   newSeenInbound(inboundDedupTTL, inboundDedupCap, opts.Now),
 		status: Status{UpdatedAt: opts.now()},
 	}
 	if opts.Now != nil {
@@ -266,9 +283,15 @@ func (c *Channel) Connect(ctx context.Context, handler Handler) error {
 
 	backoff := reconnectBase
 	for runCtx.Err() == nil {
+		startedAt := c.opts.now()
 		err := c.runSession(runCtx)
 		if runCtx.Err() != nil {
 			break
+		}
+		// P3a: 会话存活超过阈值说明这条连接是健康的, 退避复位从头算 —— 否则
+		// 长时间运行的老连接断开后, 一次网络抖动也要等满 30s 才重连。
+		if c.opts.now().Sub(startedAt) >= reconnectResetAfter {
+			backoff = reconnectBase
 		}
 		if err != nil {
 			c.log.Warn("qq: 网关会话结束, 准备重连", "err", err, "backoff", backoff)
@@ -312,7 +335,16 @@ func (c *Channel) closeConn() {
 }
 
 // runSession 跑完一次网关连接的生命周期, 返回时连接已关闭。
-func (c *Channel) runSession(ctx context.Context) error {
+func (c *Channel) runSession(ctx context.Context) (err error) {
+	// F1: 会话级 recover —— 读循环 (含同步分发的 handler) 里的任何 panic 都不再
+	// 击穿整个进程, 而是记日志并优雅结束本会话, 交给上层重连
+	// (对齐 Diana 的 recoverGoroutinePanic 语义)。
+	defer func() {
+		if r := recover(); r != nil {
+			c.log.Error("qq: 网关会话发生 panic, 结束本会话等待重连", "panic", r, "stack", string(debug.Stack()))
+			err = fmt.Errorf("qq: 会话 panic: %v", r)
+		}
+	}()
 	gateway, err := c.gatewayURL(ctx)
 	if err != nil {
 		return err
@@ -346,8 +378,8 @@ func (c *Channel) runSession(ctx context.Context) error {
 		interval = defaultHeartbeat
 	}
 	if c.opts.HeartbeatInterval > 0 && c.opts.HeartbeatInterval < interval {
-		// 显式配置更短时以配置为准 (测试用短间隔把心跳跑起来); 网关给的间隔是
-		// 服务端要求, 不允许发得比它更密。
+		// P3e: 注释与代码对齐 —— 显式配置比网关要求更密时以配置为准
+		// (测试用短间隔把心跳跑起来); 配置更疏或未配置时用网关给的间隔。
 		interval = c.opts.HeartbeatInterval
 	}
 
@@ -358,9 +390,18 @@ func (c *Channel) runSession(ctx context.Context) error {
 
 	sessionCtx, stop := context.WithCancel(ctx)
 	defer stop()
+	// A2: 心跳 goroutine 的失败信号不再被丢弃 —— 它在写失败或连续心跳无 ACK 时
+	// 会主动关闭连接让读循环退出; 这里保留 channel, 读循环退出时尽量带上原因。
 	heartbeats := make(chan error, 1)
+	tracker := &heartbeatTracker{}
 	go func() {
-		heartbeats <- c.heartbeatLoop(sessionCtx, conn, interval)
+		// F1: 心跳 goroutine 同样不允许 panic 击穿进程。
+		defer func() {
+			if r := recover(); r != nil {
+				c.log.Error("qq: 心跳循环 panic", "panic", r, "stack", string(debug.Stack()))
+			}
+		}()
+		heartbeats <- c.heartbeatLoop(sessionCtx, conn, interval, tracker)
 	}()
 
 	for {
@@ -369,6 +410,12 @@ func (c *Channel) runSession(ctx context.Context) error {
 		}
 		var payload GatewayPayload
 		if err := conn.ReadJSON(&payload); err != nil {
+			// A2: 若是心跳 goroutine 主动断开, 带上心跳失败原因 (尽力而为)。
+			select {
+			case hbErr := <-heartbeats:
+				return fmt.Errorf("qq: 网关连接中断 (心跳失败: %v): %w", hbErr, err)
+			default:
+			}
 			return fmt.Errorf("qq: 网关连接中断: %w", err)
 		}
 		// ACK 序号: 每个 dispatch 的 s 都要记下来, 心跳与 RESUME 都用它。
@@ -379,7 +426,8 @@ func (c *Channel) runSession(ctx context.Context) error {
 		case OpDispatch:
 			c.handleDispatch(ctx, payload)
 		case OpHeartbeatAck:
-			// 心跳应答, 无需处理 (连接正常)。
+			// A2: 心跳应答, 清掉 pending 与连续失败计数。
+			tracker.markAck()
 		case OpInvalidSession:
 			// 会话失效: 清掉 session 让下一轮走全新 IDENTIFY, 否则会一直被拒。
 			c.setSession("", 0, "")
@@ -408,10 +456,55 @@ func (c *Channel) authenticate(conn *websocket.Conn, auth string, sessionID stri
 	return nil
 }
 
+// heartbeatTracker 追踪心跳 ACK (A2, 对齐 参考/qq-official-adapter/core/gateway.py
+// 的 _heartbeat_ack_pending / _heartbeat_fail_count): 连续 heartbeatFailLimit 次
+// 未收到 ACK 或写失败, 判定连接坏死, 由心跳 goroutine 主动断开触发重连。
+type heartbeatTracker struct {
+	mu       sync.Mutex
+	pending  bool // 已发出心跳但尚未收到 ACK
+	failures int  // 连续失败次数 (收到 ACK 归零)
+}
+
+// markSent 标记一次心跳已发出, 等待 ACK。
+func (t *heartbeatTracker) markSent() {
+	t.mu.Lock()
+	t.pending = true
+	t.mu.Unlock()
+}
+
+// markAck 收到心跳应答: 清 pending 并归零连续失败计数。
+func (t *heartbeatTracker) markAck() {
+	t.mu.Lock()
+	t.pending = false
+	t.failures = 0
+	t.mu.Unlock()
+}
+
+// markMissed 在发送下一次心跳前检查: 上一次心跳还没收到 ACK 就计一次失败
+// (pending 保持为真, 只有 ACK 能清掉), 返回是否达到连续失败上限。
+func (t *heartbeatTracker) markMissed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.pending {
+		t.failures++
+	}
+	return t.failures >= heartbeatFailLimit
+}
+
+// markWriteFailed 心跳写失败也计入连续失败, 返回是否达到上限。
+func (t *heartbeatTracker) markWriteFailed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.failures++
+	return t.failures >= heartbeatFailLimit
+}
+
 // heartbeatLoop 按网关给的间隔上报心跳, 附带最后处理的 seq。
 //
 // 间隔已由 runSession 归一化 (含 heartbeatSlop 下限), 这里只兜底非法值。
-func (c *Channel) heartbeatLoop(ctx context.Context, conn *websocket.Conn, interval time.Duration) error {
+// A2: 写失败或连续 heartbeatFailLimit 次未收到 ACK 时, 主动关闭连接并返回错误,
+// 读循环随之退出进入重连, 避免僵尸连接挂着不重连。
+func (c *Channel) heartbeatLoop(ctx context.Context, conn *websocket.Conn, interval time.Duration, tracker *heartbeatTracker) error {
 	if interval <= 0 {
 		interval = defaultHeartbeat
 	}
@@ -422,6 +515,12 @@ func (c *Channel) heartbeatLoop(ctx context.Context, conn *websocket.Conn, inter
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			if tracker.markMissed() {
+				err := fmt.Errorf("qq: 连续 %d 次心跳未收到 ACK", heartbeatFailLimit)
+				c.log.Error(err.Error() + ", 主动断开连接等待重连")
+				_ = conn.Close()
+				return err
+			}
 			c.connMu.Lock()
 			seq := c.lastSeq
 			c.connMu.Unlock()
@@ -430,8 +529,16 @@ func (c *Channel) heartbeatLoop(ctx context.Context, conn *websocket.Conn, inter
 				return err
 			}
 			if err := conn.WriteMessage(websocket.TextMessage, encoded); err != nil {
-				return fmt.Errorf("qq: 心跳发送失败: %w", err)
+				if tracker.markWriteFailed() {
+					wrapped := fmt.Errorf("qq: 心跳连续发送失败: %w", err)
+					c.log.Error(wrapped.Error() + ", 主动断开连接等待重连")
+					_ = conn.Close()
+					return wrapped
+				}
+				c.log.Warn("qq: 心跳发送失败", "err", err)
+				continue
 			}
+			tracker.markSent()
 		}
 	}
 }
@@ -446,6 +553,16 @@ func (c *Channel) recordSeq(seq int64) {
 	if seq > c.status.LastSeq {
 		c.status.LastSeq = seq
 	}
+	c.statusMu.Unlock()
+}
+
+// resetSeq 把会话序号归零 (P3f): 新会话 (READY) 的 seq 空间重新从 0 计。
+func (c *Channel) resetSeq() {
+	c.connMu.Lock()
+	c.lastSeq = 0
+	c.connMu.Unlock()
+	c.statusMu.Lock()
+	c.status.LastSeq = 0
 	c.statusMu.Unlock()
 }
 
@@ -480,6 +597,9 @@ func (c *Channel) handleDispatch(ctx context.Context, payload GatewayPayload) {
 			} `json:"user"`
 		}
 		if err := json.Unmarshal(payload.Data, &ready); err == nil {
+			// P3f: 新会话的 seq 从零开始 —— 带着上一条会话遗留的 lastSeq 去心跳 /
+			// RESUME 可能大于服务端期望 (对齐 Python/Diana 的直接赋值语义)。
+			c.resetSeq()
 			c.setSession(ready.SessionID, 0, ready.User.ID)
 			c.setStatus(true, ready.User.ID, "")
 			c.log.Info("qq: 网关就绪", "session", ready.SessionID, "self", ready.User.ID)
@@ -497,6 +617,13 @@ func (c *Channel) handleDispatch(ctx context.Context, payload GatewayPayload) {
 	var source EventPayload
 	if err := json.Unmarshal(payload.Data, &source); err != nil {
 		c.log.Warn("qq: 解析事件失败", "event", payload.T, "err", err)
+		return
+	}
+	// A3: 入站去重 (对齐 gateway.py 的 _is_duplicate_inbound_message) —— 官方会
+	// 重复推送相同 msg_id, RESUME 重放也会重复; 转换前按事件 id 去重, 重复消息
+	// 直接丢弃。必须放在自发过滤之前: 自发台账的匹配是消费式的, 重复推送会白拿。
+	if c.seen.Seen(source.ID) {
+		c.log.Debug("qq: 丢弃重复推送的消息", "event", payload.T, "id", source.ID)
 		return
 	}
 	selfID := c.Status().SelfID
@@ -588,7 +715,8 @@ type OutboundResult struct {
 // Send 走一次完整的双模发送: 决策 → 发送 → 记账。
 //
 // 决策 (§6.12):
-//  1. 有触发 msg_id 且 ≤ PassiveWindow 且该 msg_id 被动回复次数 < 5 → 被动
+//  1. 有触发 msg_id 且在被动窗口内 (群聊 5 分钟 / 单聊 60 分钟, 判定各预留 60 秒
+//     余量) 且该 msg_id 被动回复次数未达上限 (群聊 5 次 / 单聊 4 次) → 被动
 //  2. 否则 → 主动 (先过额度台账; 额度不足返回 *ProactiveQuotaError, 不发送)
 //
 // 成功后原子更新额度 (主动) 或被动次数 (被动), 并把 ext_info.ref_idx 登记进
@@ -608,13 +736,18 @@ func (c *Channel) Send(ctx context.Context, out Outbound) (*OutboundResult, erro
 		seq := c.quota.AllocatePassiveSeq(out.TriggerID, now, out.Text)
 		decision.Seq = seq
 	}
-	// 主动模式: 发送前占额度 (Reserve), 失败且未到达平台时回滚。
+	// 主动模式: 发送前占额度 (Reserve), 失败且未到达平台时按票据回滚 (B3)。
+	var quotaTicket ProactiveTicket
 	if decision.Mode == ModeProactive {
-		if err := c.quota.Reserve(scope, now); err != nil {
+		ticket, err := c.quota.Reserve(scope, now)
+		if err != nil {
 			return nil, err
 		}
+		quotaTicket = ticket
 	}
 
+	// B3: 40054005 换 seq 重试时新领的被动票据也记下来, 失败时一并回滚。
+	var reseqTickets []int
 	resp, err := c.api.Send(ctx, SendRequest{
 		Target:     out.Target,
 		Text:       out.Text,
@@ -626,7 +759,9 @@ func (c *Channel) Send(ctx context.Context, out Outbound) (*OutboundResult, erro
 			if strings.TrimSpace(out.TriggerID) == "" {
 				return oldSeq + 1
 			}
-			return c.quota.AllocatePassiveSeq(out.TriggerID, now, out.Text)
+			fresh := c.quota.AllocatePassiveSeq(out.TriggerID, now, out.Text)
+			reseqTickets = append(reseqTickets, fresh)
+			return fresh
 		},
 	})
 	if err != nil {
@@ -636,10 +771,14 @@ func (c *Channel) Send(ctx context.Context, out Outbound) (*OutboundResult, erro
 			rollback = false
 		}
 		if rollback {
+			// B3: 按票据精确回滚, 不再弹栈式删最后一条。
 			if decision.Mode == ModePassive {
-				c.quota.DropPassive(out.TriggerID)
+				c.quota.DropPassive(out.TriggerID, decision.Seq)
+				for _, seq := range reseqTickets {
+					c.quota.DropPassive(out.TriggerID, seq)
+				}
 			} else {
-				c.quota.Release(scope, now)
+				c.quota.Release(quotaTicket)
 			}
 		}
 		return nil, err
@@ -680,4 +819,75 @@ func (c *Channel) TriggerWindow() time.Duration {
 		return c.opts.PassiveWindow
 	}
 	return PassiveWindow
+}
+
+// ---------------------------------------------------------------------------
+// 入站去重缓存 (A3)
+// ---------------------------------------------------------------------------
+
+// seenInbound 是带 TTL 与容量上限的入站消息去重缓存 (对齐 gateway.py 的
+// _seen_inbound_message_ids): 首次见到返回 false, 重复返回 true。
+// 并发安全; 超限时淘汰最老的条目 (LRU 的简化版: 过期 + 容量兜底已够用)。
+type seenInbound struct {
+	mu      sync.Mutex
+	entries map[string]time.Time
+	ttl     time.Duration
+	cap     int
+	now     func() time.Time
+}
+
+func newSeenInbound(ttl time.Duration, capacity int, now func() time.Time) *seenInbound {
+	if ttl <= 0 {
+		ttl = inboundDedupTTL
+	}
+	if capacity <= 0 {
+		capacity = inboundDedupCap
+	}
+	return &seenInbound{entries: map[string]time.Time{}, ttl: ttl, cap: capacity, now: now}
+}
+
+func (s *seenInbound) time() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+// Seen 记录一个事件 id 并报告是否重复。空 id 不去重 (事件缺 id 时放行)。
+func (s *seenInbound) Seen(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	now := s.time()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, at := range s.entries {
+		if now.Sub(at) > s.ttl {
+			delete(s.entries, key)
+		}
+	}
+	if _, ok := s.entries[id]; ok {
+		return true
+	}
+	s.entries[id] = now
+	if len(s.entries) > s.cap {
+		oldestKey := ""
+		var oldest time.Time
+		first := true
+		for key, at := range s.entries {
+			if first || at.Before(oldest) {
+				oldestKey, oldest, first = key, at, false
+			}
+		}
+		delete(s.entries, oldestKey)
+	}
+	return false
+}
+
+// Len 返回当前缓存条数 (测试/诊断用)。
+func (s *seenInbound) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.entries)
 }

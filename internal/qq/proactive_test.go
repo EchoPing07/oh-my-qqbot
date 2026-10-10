@@ -59,7 +59,7 @@ func TestProactiveGroupSlidingWindow(t *testing.T) {
 	scope := ProactiveScope{GroupID: "G1"}
 
 	for i := 1; i <= DefaultGroupPerMinute; i++ {
-		if err := ledger.Reserve(scope, clock.Now()); err != nil {
+		if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 			t.Fatalf("第 %d 条应通过额度检查: %v", i, err)
 		}
 		clock.Advance(time.Second)
@@ -84,7 +84,7 @@ func TestProactiveGroupSlidingWindow(t *testing.T) {
 
 	// 滑到最老一条滚出窗口 (第 1 条在 t=0, t+60s 时出窗) → 可再发一条。
 	clock.Advance(time.Minute + time.Second - 20*time.Second)
-	if err := ledger.Reserve(scope, clock.Now()); err != nil {
+	if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 		t.Fatalf("窗口滑出后应可再发: %v", err)
 	}
 	// 立即再发一条仍会被拒 (窗口已占满 20)。
@@ -93,23 +93,34 @@ func TestProactiveGroupSlidingWindow(t *testing.T) {
 	}
 }
 
-// TestProactiveSlidingWindowRelease 校验 Release 回滚额度。
+// TestProactiveSlidingWindowRelease 校验 Release 按票据回滚额度 (B3)。
 func TestProactiveSlidingWindowRelease(t *testing.T) {
 	clock := newFixedClock(testStart())
 	ledger := newTestLedger(clock, ProactiveOptions{})
 	scope := ProactiveScope{GroupID: "G1"}
+	var last ProactiveTicket
 	for i := 0; i < DefaultGroupPerMinute; i++ {
-		if err := ledger.Reserve(scope, clock.Now()); err != nil {
+		ticket, err := ledger.Reserve(scope, clock.Now())
+		if err != nil {
 			t.Fatalf("第 %d 条应通过: %v", i+1, err)
 		}
+		last = ticket
+		clock.Advance(time.Second)
 	}
 	if err := ledger.Check(scope, clock.Now()); err == nil {
 		t.Fatal("占满后应被拒")
 	}
-	ledger.Release(scope, clock.Now())
-	if err := ledger.Reserve(scope, clock.Now()); err != nil {
+	ledger.Release(last)
+	if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 		t.Fatalf("Release 后应能再发: %v", err)
 	}
+	// 同一票据重复 Release: 无效, 不应多腾出名额 (占满后仍被拒)。
+	ledger.Release(last)
+	if err := ledger.Check(scope, clock.Now()); err == nil {
+		t.Fatal("重复 Release 不应再腾出名额")
+	}
+	// 零值票据是 no-op。
+	ledger.Release(ProactiveTicket{})
 }
 
 // TestProactiveBotSlidingWindow 校验机器人全局 qpm (60 已认证 / 30 未认证)。
@@ -129,7 +140,7 @@ func TestProactiveBotSlidingWindow(t *testing.T) {
 			// 每发一条换一个群, 规避单群 20 的限制, 只看全局额度。
 			for i := 1; i <= item.want; i++ {
 				scope := ProactiveScope{GroupID: "G" + strconv.Itoa(i)}
-				if err := ledger.Reserve(scope, clock.Now()); err != nil {
+				if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 					t.Fatalf("第 %d 条应通过额度检查: %v", i, err)
 				}
 			}
@@ -153,7 +164,7 @@ func TestProactiveBotMinuteOverride(t *testing.T) {
 	clock := newFixedClock(testStart())
 	ledger := newTestLedger(clock, ProactiveOptions{BotPerMinute: 2})
 	for i := 1; i <= 2; i++ {
-		if err := ledger.Reserve(ProactiveScope{GroupID: "G" + strconv.Itoa(i)}, clock.Now()); err != nil {
+		if _, err := ledger.Reserve(ProactiveScope{GroupID: "G" + strconv.Itoa(i)}, clock.Now()); err != nil {
 			t.Fatalf("第 %d 条应通过: %v", i, err)
 		}
 	}
@@ -163,7 +174,7 @@ func TestProactiveBotMinuteOverride(t *testing.T) {
 
 	unlimited := newTestLedger(clock, ProactiveOptions{BotPerMinute: -1, GroupPerDay: -1, GroupPerMinute: -1})
 	for i := 0; i < 100; i++ {
-		if err := unlimited.Reserve(ProactiveScope{GroupID: "G"}, clock.Now()); err != nil {
+		if _, err := unlimited.Reserve(ProactiveScope{GroupID: "G"}, clock.Now()); err != nil {
 			t.Fatalf("不限额度时第 %d 条不应被拒: %v", i+1, err)
 		}
 	}
@@ -183,7 +194,7 @@ func TestProactiveDailyReset(t *testing.T) {
 	// 一天 1440 分钟 × 每分钟 20 条 = 28800 条, 但每日上限 1000 先到。
 	spent := 0
 	for i := 0; i < 2000; i++ {
-		if err := ledger.Reserve(scope, clock.Now()); err != nil {
+		if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 			break
 		}
 		spent++
@@ -214,7 +225,7 @@ func TestProactiveDailyReset(t *testing.T) {
 
 	// 推进到本地次日 0 点之后: 日计数重置, 群滑动窗口也已空 → 可再发。
 	clock.Advance(time.Until(nextMidnight(clock.Now(), testZone())) + time.Second)
-	if err := ledger.Reserve(scope, clock.Now()); err != nil {
+	if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 		t.Fatalf("跨日后应能再发: %v", err)
 	}
 	if usage := ledger.Usage("G1", clock.Now()); usage.GroupDayUsed != 1 {
@@ -228,7 +239,7 @@ func TestProactiveNextDayResetsOnlyCounts(t *testing.T) {
 	ledger := newTestLedger(clock, ProactiveOptions{})
 	scope := ProactiveScope{GroupID: "G1"}
 	for i := 0; i < 5; i++ {
-		if err := ledger.Reserve(scope, clock.Now()); err != nil {
+		if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 			t.Fatalf("第 %d 条应通过: %v", i+1, err)
 		}
 	}
@@ -239,7 +250,7 @@ func TestProactiveNextDayResetsOnlyCounts(t *testing.T) {
 	if usage := ledger.Usage("G1", clock.Now()); usage.GroupDayUsed != 0 {
 		t.Fatalf("次日应重置为 0, got %d", usage.GroupDayUsed)
 	}
-	if err := ledger.Reserve(scope, clock.Now()); err != nil {
+	if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 		t.Fatalf("次日应能发送: %v", err)
 	}
 	if usage := ledger.Usage("G1", clock.Now()); usage.GroupDayUsed != 1 {
@@ -265,7 +276,7 @@ func TestProactiveConcurrentReserve(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := ledger.Reserve(scope, clock.Now())
+			_, err := ledger.Reserve(scope, clock.Now())
 			mu.Lock()
 			defer mu.Unlock()
 			if err == nil {
@@ -296,7 +307,7 @@ func TestProactiveConcurrentMultipleGroups(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			scope := ProactiveScope{GroupID: "G" + strconv.Itoa(i%50)}
-			if err := ledger.Reserve(scope, clock.Now()); err == nil {
+			if _, err := ledger.Reserve(scope, clock.Now()); err == nil {
 				mu.Lock()
 				succeeded++
 				mu.Unlock()
@@ -357,7 +368,8 @@ func TestDecideSendModePassiveThenProactive(t *testing.T) {
 	}
 }
 
-// TestDecideSendModeWindowExpiry 校验超过 5 分钟窗口 → 主动。
+// TestDecideSendModeWindowExpiry 校验超过窗口 → 主动。
+// B4: 群聊窗口 5 分钟预留 60 秒余量, 实际判定 4 分钟 (对齐 GROUP_PASSIVE_REPLY_TTL_SEC)。
 func TestDecideSendModeWindowExpiry(t *testing.T) {
 	clock := newFixedClock(testStart())
 	ledger := newTestLedger(clock, ProactiveOptions{})
@@ -367,14 +379,14 @@ func TestDecideSendModeWindowExpiry(t *testing.T) {
 	if decision := DecideSendMode(ledger, scope, "T1", triggerTime, clock.Now()); decision.Mode != ModePassive {
 		t.Fatalf("窗口内应为被动: %s", decision.Mode)
 	}
-	clock.Advance(PassiveWindow - time.Second)
+	clock.Advance(PassiveWindow - passiveWindowMargin - time.Second)
 	if decision := DecideSendMode(ledger, scope, "T1", triggerTime, clock.Now()); decision.Mode != ModePassive {
-		t.Fatalf("窗口边界内(4分59秒)应为被动: %s", decision.Mode)
+		t.Fatalf("余量边界内(3分59秒)应为被动: %s", decision.Mode)
 	}
-	clock.Advance(2 * time.Second) // 总共 5 分 1 秒
+	clock.Advance(2 * time.Second) // 总共 4 分 1 秒 (还在平台窗口内, 但已进余量)
 	decision := DecideSendMode(ledger, scope, "T1", triggerTime, clock.Now())
 	if decision.Mode != ModeProactive {
-		t.Fatalf("超过 5 分钟窗口应走主动: %s", decision.Mode)
+		t.Fatalf("进入安全余量后应走主动: %s", decision.Mode)
 	}
 	if decision.Reason != "passive_window_expired" {
 		t.Fatalf("原因应为窗口过期: %q", decision.Reason)
@@ -387,7 +399,7 @@ func TestDecideSendModeQuotaExhausted(t *testing.T) {
 	ledger := newTestLedger(clock, ProactiveOptions{})
 	scope := ProactiveScope{GroupID: "G1"}
 	for i := 0; i < DefaultGroupPerMinute; i++ {
-		if err := ledger.Reserve(scope, clock.Now()); err != nil {
+		if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 			t.Fatalf("第 %d 条应通过: %v", i+1, err)
 		}
 	}
@@ -433,8 +445,8 @@ func TestAllocatePassiveSeqAndRollback(t *testing.T) {
 	if bodies := ledger.PassiveBodies("T1"); len(bodies) != 2 || bodies[1] != "第二句(改)" {
 		t.Fatalf("正文回填不符: %v", bodies)
 	}
-	// 回滚: 次数回到 1。
-	ledger.DropPassive("T1")
+	// 回滚: 按票据 (seq=2) 撤销, 次数回到 1。
+	ledger.DropPassive("T1", 2)
 	if used := ledger.PassiveUsed("T1"); used != 1 {
 		t.Fatalf("回滚后应剩 1 次, got %d", used)
 	}
@@ -447,6 +459,13 @@ func TestAllocatePassiveSeqAndRollback(t *testing.T) {
 	}
 	if used := ledger.PassiveUsed(""); used != 0 {
 		t.Fatalf("空触发 id 不应有记录: %d", used)
+	}
+	// 票据找不到 (seq 不存在) 时不动其他记录; 非法票据是 no-op。
+	ledger.DropPassive("T1", 99)
+	ledger.DropPassive("T1", 0)
+	ledger.DropPassive("", 1)
+	if used := ledger.PassiveUsed("T1"); used != 2 {
+		t.Fatalf("无效票据不应影响计数, got %d", used)
 	}
 }
 
@@ -481,7 +500,7 @@ func TestProactiveRejectCallback(t *testing.T) {
 	scope := ProactiveScope{GroupID: "G1"}
 	for i := 0; i < DefaultGroupPerMinute+2; i++ {
 		_ = ledger.Check(scope, clock.Now())
-		_ = ledger.Reserve(scope, clock.Now())
+		_, _ = ledger.Reserve(scope, clock.Now())
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -499,7 +518,7 @@ func TestProactiveUsageSnapshot(t *testing.T) {
 	ledger := newTestLedger(clock, ProactiveOptions{})
 	scope := ProactiveScope{GroupID: "G1"}
 	for i := 0; i < 3; i++ {
-		if err := ledger.Reserve(scope, clock.Now()); err != nil {
+		if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 			t.Fatalf("Reserve 失败: %v", err)
 		}
 	}
@@ -538,7 +557,7 @@ func TestProactiveResetAndSetOptions(t *testing.T) {
 	clock := newFixedClock(testStart())
 	ledger := newTestLedger(clock, ProactiveOptions{})
 	scope := ProactiveScope{GroupID: "G1"}
-	if err := ledger.Reserve(scope, clock.Now()); err != nil {
+	if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 		t.Fatalf("Reserve 失败: %v", err)
 	}
 	ledger.Reset()
@@ -550,7 +569,7 @@ func TestProactiveResetAndSetOptions(t *testing.T) {
 	}
 	ledger.SetOptions(ProactiveOptions{GroupPerMinute: -1, GroupPerDay: -1, BotPerMinute: -1, Now: clock.Now, TimeZone: testZone()})
 	for i := 0; i < 500; i++ {
-		if err := ledger.Reserve(scope, clock.Now()); err != nil {
+		if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
 			t.Fatalf("不限额度时不应被拒 (第 %d 条): %v", i+1, err)
 		}
 	}
@@ -616,5 +635,136 @@ func TestDecideSendModeWithOverrides(t *testing.T) {
 	clock.Advance(90 * time.Second)
 	if decision := DecideSendModeWith(ledger, scope, "T2", triggerTime, clock.Now(), time.Minute, 0); decision.Mode != ModeProactive {
 		t.Fatalf("超过 1 分钟窗口应走主动: %s", decision.Mode)
+	}
+}
+
+// TestDecideSendModeC2CWindow 校验单聊 (C2C, 无 GroupID) 的被动窗口是 60 分钟 /
+// 4 次, 与群聊 (5 分钟 / 5 次) 区分 (B2, 对齐 Python constants.py / Diana)。
+func TestDecideSendModeC2CWindow(t *testing.T) {
+	clock := newFixedClock(testStart())
+	ledger := newTestLedger(clock, ProactiveOptions{})
+	scope := ProactiveScope{UserID: "U1"}
+	triggerTime := clock.Now()
+
+	// 30 分钟后群聊早已出窗, 单聊仍应判被动。
+	clock.Advance(30 * time.Minute)
+	if decision := DecideSendMode(ledger, scope, "T_C2C", triggerTime, clock.Now()); decision.Mode != ModePassive {
+		t.Fatalf("单聊 30 分钟后仍应为被动: %s (%s)", decision.Mode, decision.Reason)
+	}
+	// 同时刻的群聊触发应已出窗 (含余量后判定 4 分钟)。
+	if decision := DecideSendMode(ledger, ProactiveScope{GroupID: "G1"}, "T_GROUP", triggerTime, clock.Now()); decision.Mode != ModeProactive {
+		t.Fatalf("群聊 30 分钟后应为主动: %s", decision.Mode)
+	}
+
+	// 单聊第 5 次应降级主动 (上限 4 次)。
+	clock2 := newFixedClock(testStart())
+	ledger2 := newTestLedger(clock2, ProactiveOptions{})
+	for i := 1; i <= C2CPassiveMaxReplies; i++ {
+		if decision := DecideSendMode(ledger2, scope, "T_C2C", triggerTime, clock2.Now()); decision.Mode != ModePassive {
+			t.Fatalf("单聊第 %d 次应为被动: %s", i, decision.Mode)
+		}
+		ledger2.AllocatePassiveSeq("T_C2C", clock2.Now(), "第"+strconv.Itoa(i)+"句")
+	}
+	decision := DecideSendMode(ledger2, scope, "T_C2C", triggerTime, clock2.Now())
+	if decision.Mode != ModeProactive || decision.Reason != "passive_limit_reached" {
+		t.Fatalf("单聊超过 %d 次应降级主动: %s (%s)", C2CPassiveMaxReplies, decision.Mode, decision.Reason)
+	}
+}
+
+// TestProactiveReleaseByTicket 校验 Release 按票据精确回滚: 删的是票据对应的那条,
+// 而不是最后一条 (B3); 重复回滚与未知票据都不动其他记录。
+func TestProactiveReleaseByTicket(t *testing.T) {
+	clock := newFixedClock(testStart())
+	ledger := newTestLedger(clock, ProactiveOptions{GroupPerMinute: 2, BotPerMinute: -1})
+	scope := ProactiveScope{GroupID: "G1"}
+
+	ticketA, err := ledger.Reserve(scope, clock.Now()) // t0
+	if err != nil {
+		t.Fatalf("Reserve A 失败: %v", err)
+	}
+	clock.Advance(50 * time.Second)
+	ticketB, err := ledger.Reserve(scope, clock.Now()) // t0+50s
+	if err != nil {
+		t.Fatalf("Reserve B 失败: %v", err)
+	}
+	_ = ticketB
+
+	// 回滚较早的 A: 窗口里应只剩 B(t0+50s)。旧实现弹栈会删掉 B 留下 A。
+	ledger.Release(ticketA)
+	usage := ledger.Usage("G1", clock.Now())
+	if usage.GroupMinuteUsed != 1 || usage.GroupDayUsed != 1 {
+		t.Fatalf("回滚 A 后用量应为 1, got %+v", usage)
+	}
+	// 群窗口最老一条应是 B → 重置时刻 = (t0+50s) + 1min。
+	if want := testStart().Add(50*time.Second + time.Minute); !usage.GroupWindowResetAt.Equal(want) {
+		t.Fatalf("应保留较新的 B: 窗口重置时刻 got %v want %v", usage.GroupWindowResetAt, want)
+	}
+
+	// 重复回滚同一票据: 不应再扣。
+	ledger.Release(ticketA)
+	if usage := ledger.Usage("G1", clock.Now()); usage.GroupMinuteUsed != 1 || usage.GroupDayUsed != 1 {
+		t.Fatalf("重复回滚不应影响用量: %+v", usage)
+	}
+	// 零值票据是 no-op。
+	ledger.Release(ProactiveTicket{})
+	if usage := ledger.Usage("G1", clock.Now()); usage.GroupMinuteUsed != 1 {
+		t.Fatalf("零值票据不应影响用量: %+v", usage)
+	}
+	// 腾出的名额可再发。
+	if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
+		t.Fatalf("回滚后应能再发: %v", err)
+	}
+}
+
+// TestProactiveReleaseAcrossDayKeepsNewDayCount 校验跨日回滚不扣新一天的日计数。
+func TestProactiveReleaseAcrossDayKeepsNewDayCount(t *testing.T) {
+	clock := newFixedClock(testStart())
+	ledger := newTestLedger(clock, ProactiveOptions{})
+	scope := ProactiveScope{GroupID: "G1"}
+	ticket, err := ledger.Reserve(scope, clock.Now())
+	if err != nil {
+		t.Fatalf("Reserve 失败: %v", err)
+	}
+	clock.Advance(2 * time.Hour) // 跨过 0 点
+	ledger.Release(ticket)
+	if usage := ledger.Usage("G1", clock.Now()); usage.GroupDayUsed != 0 {
+		t.Fatalf("跨日回滚后新一天的日计数应为 0, got %d", usage.GroupDayUsed)
+	}
+	// 次日再发一条, 日计数应为 1 (没有被昨天的回滚扣掉)。
+	if _, err := ledger.Reserve(scope, clock.Now()); err != nil {
+		t.Fatalf("次日应能再发: %v", err)
+	}
+	if usage := ledger.Usage("G1", clock.Now()); usage.GroupDayUsed != 1 {
+		t.Fatalf("次日日计数应为 1, got %d", usage.GroupDayUsed)
+	}
+}
+
+// TestDropPassiveBySeq 校验 DropPassive 按票据 (seq) 精确删除 (B3)。
+func TestDropPassiveBySeq(t *testing.T) {
+	clock := newFixedClock(testStart())
+	ledger := newTestLedger(clock, ProactiveOptions{})
+	s1 := ledger.AllocatePassiveSeq("T1", clock.Now(), "一")
+	s2 := ledger.AllocatePassiveSeq("T1", clock.Now(), "二")
+	s3 := ledger.AllocatePassiveSeq("T1", clock.Now(), "三")
+	if s1 != 1 || s2 != 2 || s3 != 3 {
+		t.Fatalf("seq 分配不符: %d %d %d", s1, s2, s3)
+	}
+	// 删中间的 seq=2, 其余不受影响。
+	ledger.DropPassive("T1", 2)
+	if used := ledger.PassiveUsed("T1"); used != 2 {
+		t.Fatalf("删除 seq=2 后应剩 2 条, got %d", used)
+	}
+	bodies := ledger.PassiveBodies("T1")
+	if len(bodies) != 2 || bodies[0] != "一" || bodies[1] != "三" {
+		t.Fatalf("删除后正文不符: %v", bodies)
+	}
+	// 重复删除同一票据: 找不到时不动其他记录。
+	ledger.DropPassive("T1", 2)
+	if used := ledger.PassiveUsed("T1"); used != 2 {
+		t.Fatalf("重复删除不应影响计数, got %d", used)
+	}
+	// 删掉后再分配不撞已有 seq (max+1 而不是 len+1)。
+	if seq := ledger.AllocatePassiveSeq("T1", clock.Now(), "四"); seq != 4 {
+		t.Fatalf("删除中间条目后应分配 seq=4, got %d", seq)
 	}
 }

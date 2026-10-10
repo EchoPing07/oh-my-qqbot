@@ -13,6 +13,7 @@ import (
 
 	"oh-my-qqbot/internal"
 	"oh-my-qqbot/internal/assemble"
+	"oh-my-qqbot/internal/config"
 	"oh-my-qqbot/internal/mcp"
 	"oh-my-qqbot/internal/webui"
 )
@@ -114,8 +115,10 @@ func newWebUI(app *assemble.App) (assemble.WebUIKernel, error) {
 func startMCP(ctx context.Context, app *assemble.App) error {
 	cfg := app.Cfg.GetGlobalConfig()
 	service := mcp.NewService()
-	mcpCfg := mcp.MCPConfig{Enable: cfg.MCP.Enable}
-	if err := service.EnsureInitialized(ctx, mcpCfg); err != nil {
+	// L3 修复：完整映射 internal/config 的 MCPConfig（Servers/Client 逐字段
+	// 转换到 internal/mcp 的同构配置）。此前只映射 Enable，服务器与客户端
+	// 能力配置全部丢失，MCP 等于永远连不上任何服务器。
+	if err := service.EnsureInitialized(ctx, bridgeMCPConfig(cfg.MCP)); err != nil {
 		return err
 	}
 	// 合并 MCP 条目（deferred，经 tool_search 发现）并替换 App 的共享注册表：
@@ -124,4 +127,67 @@ func startMCP(ctx context.Context, app *assemble.App) error {
 	registry, _ := mcp.NewProvider(service).Register(app.BuiltinEntries())
 	app.SetToolRegistry(registry)
 	return nil
+}
+
+// bridgeMCPConfig 把 internal/config 的 MCPConfig 逐字段转换为 internal/mcp 的
+// MCPConfig（两套结构体与 official_configs.MCPConfig 同构；config 侧裁掉了
+// AllowUsers/AllowChats/Permission 三个权限字段，转换时保持零值）。
+func bridgeMCPConfig(src config.MCPConfig) mcp.MCPConfig {
+	out := mcp.MCPConfig{
+		Enable: src.Enable,
+		Client: mcp.MCPClientConfig{
+			ClientName:    src.Client.ClientName,
+			ClientVersion: src.Client.ClientVersion,
+			Roots: mcp.MCPRootsConfig{
+				Enable: src.Client.Roots.Enable,
+				Items:  make([]mcp.MCPRootItemConfig, 0, len(src.Client.Roots.Items)),
+			},
+			Sampling: mcp.MCPSamplingConfig{
+				Enable:                src.Client.Sampling.Enable,
+				TaskName:              src.Client.Sampling.TaskName,
+				IncludeContextSupport: src.Client.Sampling.IncludeContextSupport,
+				ToolSupport:           src.Client.Sampling.ToolSupport,
+			},
+			Elicitation: mcp.MCPElicitationConfig{
+				Enable:    src.Client.Elicitation.Enable,
+				AllowForm: src.Client.Elicitation.AllowForm,
+				AllowURL:  src.Client.Elicitation.AllowURL,
+			},
+		},
+		Servers: make([]mcp.MCPServerItemConfig, 0, len(src.Servers)),
+	}
+	for _, root := range src.Client.Roots.Items {
+		out.Client.Roots.Items = append(out.Client.Roots.Items, mcp.MCPRootItemConfig{
+			Enabled: root.Enabled,
+			URI:     root.URI,
+			Name:    root.Name,
+		})
+	}
+	for _, server := range src.Servers {
+		out.Servers = append(out.Servers, mcp.MCPServerItemConfig{
+			Name:               server.Name,
+			Enabled:            server.Enabled,
+			Transport:          server.Transport,
+			Command:            server.Command,
+			Args:               append([]string(nil), server.Args...),
+			Env:                copyStringMap(server.Env),
+			URL:                server.URL,
+			Headers:            copyStringMap(server.Headers),
+			HTTPTimeoutSeconds: server.HTTPTimeoutSeconds,
+			ReadTimeoutSeconds: server.ReadTimeoutSeconds,
+			Authorization: mcp.MCPAuthorizationConfig{
+				Mode:        server.Authorization.Mode,
+				BearerToken: server.Authorization.BearerToken,
+			},
+		})
+	}
+	return out
+}
+
+func copyStringMap(src map[string]string) map[string]string {
+	out := make(map[string]string, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
 }

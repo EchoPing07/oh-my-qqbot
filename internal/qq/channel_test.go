@@ -35,6 +35,8 @@ type fakeGateway struct {
 	sendOps []func(conn *websocket.Conn)
 	// dropAfterHello 让服务端在 hello 之后立刻关闭连接 (模拟断线)。
 	dropAfterHello bool
+	// noAck 让服务端不对心跳回 ACK (A2: 模拟僵尸连接)。
+	noAck bool
 	// hold 是下发完 ops 后保持连接的时长, 之后主动关闭。
 	hold time.Duration
 }
@@ -65,6 +67,7 @@ func (g *fakeGateway) serve(conn *websocket.Conn) {
 	g.mu.Lock()
 	interval := g.helloInterval
 	drop := g.dropAfterHello
+	noAck := g.noAck
 	hold := g.hold
 	ops := append([]func(conn *websocket.Conn){}, g.sendOps...)
 	g.mu.Unlock()
@@ -78,7 +81,7 @@ func (g *fakeGateway) serve(conn *websocket.Conn) {
 		return
 	}
 	// 收鉴权帧 (IDENTIFY / RESUME)。
-	if err := g.readFrame(conn); err != nil {
+	if err := g.readFrame(conn, noAck); err != nil {
 		return
 	}
 	for _, op := range ops {
@@ -91,13 +94,13 @@ func (g *fakeGateway) serve(conn *websocket.Conn) {
 		defer timer.Stop()
 	}
 	for {
-		if err := g.readFrame(conn); err != nil {
+		if err := g.readFrame(conn, noAck); err != nil {
 			return
 		}
 	}
 }
 
-func (g *fakeGateway) readFrame(conn *websocket.Conn) error {
+func (g *fakeGateway) readFrame(conn *websocket.Conn, noAck bool) error {
 	_, raw, err := conn.ReadMessage()
 	if err != nil {
 		return err
@@ -109,6 +112,10 @@ func (g *fakeGateway) readFrame(conn *websocket.Conn) error {
 	g.mu.Lock()
 	g.frames = append(g.frames, frame)
 	g.mu.Unlock()
+	// A2: 真实网关对心跳回 ACK (op 11); noAck 时不回, 用来模拟僵尸连接。
+	if op, _ := frame["op"].(float64); int(op) == OpHeartbeat && !noAck {
+		_ = conn.WriteJSON(GatewayPayload{Op: OpHeartbeatAck})
+	}
 	return nil
 }
 
@@ -411,8 +418,8 @@ func TestChannelDispatchesGroupMessage(t *testing.T) {
 		"mentions":      []map[string]any{{"id": "BOT_OPENID_1", "is_you": true}},
 		"message_scene": map[string]any{"ext": []string{"msg_idx=REFIDX_IN_1"}},
 	})
-	channel.handleDispatch(context.Background(), dispatch)
-
+	// waitForMessage 内部会设置 handler 并分发一次 (A3 去重生效后, 同一 msg_id
+	// 不能分发两次, 否则第二次会被当作重复推送丢弃)。
 	got := waitForMessage(t, channel, dispatch)
 	if got.UserID() != "MEMBER_1" || got.GroupID() != "GROUP_1" {
 		t.Fatalf("消息路由不符: %+v", got.MessageInfo)
@@ -723,6 +730,164 @@ func TestChannelTriggerWindowDefault(t *testing.T) {
 	override := NewChannel(Options{PassiveWindow: time.Minute})
 	if got := override.TriggerWindow(); got != time.Minute {
 		t.Fatalf("可配置的被动窗口不生效: %v", got)
+	}
+}
+
+// TestChannelHandlerPanicEndsSessionGracefully 校验 F1: handler panic 不会击穿进程,
+// 而是优雅结束本会话 (runSession 返回错误), 由上层重连。
+func TestChannelHandlerPanicEndsSessionGracefully(t *testing.T) {
+	gw := newFakeGateway(t)
+	channel := newTestChannel(t, gw.url, nil)
+	channel.API().tokens.token = "TOKEN_X"
+	channel.API().tokens.expiresAt = time.Now().Add(time.Hour)
+
+	ready := newDispatch(t, EventReady, 0, map[string]any{
+		"session_id": "SESSION_PANIC",
+		"user":       map[string]any{"id": "BOT_1"},
+	})
+	gw.setOps(
+		writeJSONFrame(ready),
+		writeJSONFrame(newDispatch(t, EventGroupMessageCreate, 1, map[string]any{
+			"id": "MSG_BOOM", "content": "炸", "group_openid": "G1",
+			"author": map[string]any{"id": "M1", "member_openid": "M1"},
+		})),
+	)
+	// 直接注入会 panic 的 handler (runSession 从 c.handler 取回调)。
+	channel.mu.Lock()
+	channel.handler = func(context.Context, *message.SessionMessage) error {
+		panic("handler 炸了")
+	}
+	channel.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- channel.runSession(ctx)
+	}()
+	err := <-done
+	if err == nil {
+		t.Fatal("handler panic 应让 runSession 返回错误 (触发重连)")
+	}
+	if !strings.Contains(err.Error(), "panic") {
+		t.Fatalf("错误应说明是 panic: %v", err)
+	}
+}
+
+// TestChannelHeartbeatMissAckReconnects 校验 A2: 连续心跳无 ACK 时客户端主动断开
+// 并重连, 不再傻等 (僵尸连接检测)。
+func TestChannelHeartbeatMissAckReconnects(t *testing.T) {
+	gw := newFakeGateway(t)
+	gw.mu.Lock()
+	gw.noAck = true
+	gw.hold = 0 // 服务端不主动关连接, 让心跳检测来断
+	gw.mu.Unlock()
+	channel := newTestChannel(t, gw.url, nil)
+	channel.API().tokens.token = "TOKEN_X"
+	channel.API().tokens.expiresAt = time.Now().Add(time.Hour)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- channel.Connect(ctx, func(context.Context, *message.SessionMessage) error { return nil })
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if gw.connectionCount() >= 2 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	_ = channel.Close()
+	<-done
+	if got := gw.connectionCount(); got < 2 {
+		t.Fatalf("连续心跳无 ACK 应触发重连, got %d 条连接", got)
+	}
+}
+
+// TestChannelDedupsRepeatedInbound 校验 A3: 相同 msg_id 的重复推送 (含 RESUME 重放)
+// 只回调一次。
+func TestChannelDedupsRepeatedInbound(t *testing.T) {
+	channel := newTestChannel(t, "ws://127.0.0.1:1/ws", nil)
+	channel.setSession("SESSION_1", 0, "BOT_OPENID_1")
+	received := make(chan *message.SessionMessage, 4)
+	channel.mu.Lock()
+	channel.handler = func(ctx context.Context, msg *message.SessionMessage) error {
+		received <- msg
+		return nil
+	}
+	channel.mu.Unlock()
+
+	dispatch := func() GatewayPayload {
+		return newDispatch(t, EventGroupMessageCreate, 0, map[string]any{
+			"id": "MSG_DUP", "content": "hi", "group_openid": "G1",
+			"author": map[string]any{"id": "M1", "member_openid": "M1"},
+		})
+	}
+	channel.handleDispatch(context.Background(), dispatch())
+	channel.handleDispatch(context.Background(), dispatch()) // 官方重复推送
+	channel.handleDispatch(context.Background(), dispatch()) // RESUME 重放
+
+	select {
+	case got := <-received:
+		if got.MessageID != "MSG_DUP" {
+			t.Fatalf("首条消息应进回调: %s", got.MessageID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("首条消息应被回调")
+	}
+	select {
+	case msg := <-received:
+		t.Fatalf("重复推送不应进回调: %s", msg.MessageID)
+	case <-time.After(100 * time.Millisecond):
+	}
+	// 不同 id 的消息不受影响。
+	channel.handleDispatch(context.Background(), newDispatch(t, EventGroupMessageCreate, 0, map[string]any{
+		"id": "MSG_OTHER", "content": "hi2", "group_openid": "G1",
+		"author": map[string]any{"id": "M1", "member_openid": "M1"},
+	}))
+	select {
+	case got := <-received:
+		if got.MessageID != "MSG_OTHER" {
+			t.Fatalf("不同 id 的消息应进回调: %s", got.MessageID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("不同 id 的消息应被回调")
+	}
+}
+
+// TestChannelReadyResetsSeq 校验 P3f: READY 开新会话时 lastSeq 归零, 不会带着旧
+// 会话的序号去心跳 / RESUME。
+func TestChannelReadyResetsSeq(t *testing.T) {
+	gw := newFakeGateway(t)
+	channel := newTestChannel(t, gw.url, nil)
+	channel.API().tokens.token = "TOKEN_X"
+	channel.API().tokens.expiresAt = time.Now().Add(time.Hour)
+
+	// 模拟上一条会话遗留的 seq。
+	channel.setSession("SESSION_OLD", 0, "BOT_1")
+	channel.recordSeq(9)
+	if _, seq := channel.session(); seq != 9 {
+		t.Fatalf("前置条件不符: seq=%d", seq)
+	}
+
+	gw.setOps(writeJSONFrame(newDispatch(t, EventReady, 0, map[string]any{
+		"session_id": "SESSION_NEW",
+		"user":       map[string]any{"id": "BOT_1"},
+	})))
+	// 上一条会话还在, 这次会先走 RESUME (带着遗留的 seq=9); READY 一到就归零。
+	runSessionOnce(t, channel, gw, OpResume)
+
+	if _, seq := channel.session(); seq != 0 {
+		t.Fatalf("READY 后 lastSeq 应归零, got %d", seq)
+	}
+	if channel.Status().LastSeq != 0 {
+		t.Fatalf("状态里的 LastSeq 也应归零: %+v", channel.Status())
+	}
+	if id, _ := channel.session(); id != "SESSION_NEW" {
+		t.Fatalf("READY 应记录新会话: %q", id)
 	}
 }
 

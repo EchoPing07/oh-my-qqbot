@@ -20,6 +20,7 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -513,6 +514,15 @@ func defaultJSONObject(raw string) string {
 		return "{}"
 	}
 	if !json.Valid([]byte(raw)) {
+		// L11 修复：非法 JSON 不再完全静默——保留告警日志（含 arguments 原文，
+		// 截断到 512 字符），便于回溯模型输出问题。字段语义保持 "{}"（该函数
+		// 用于把历史/请求投影成合法 JSON object，替换本身无法避免）。
+		trimmed := raw
+		if len(trimmed) > 512 {
+			trimmed = trimmed[:512] + "…"
+		}
+		slog.Warn("llm: tool_calls arguments 不是合法 JSON，已回退为空对象",
+			"arguments", trimmed)
 		return "{}"
 	}
 	return raw

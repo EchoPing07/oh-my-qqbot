@@ -214,8 +214,10 @@ func TestChatSendsRequestAndParsesResponse(t *testing.T) {
 	if recorded.Body["max_tokens"] != float64(256) {
 		t.Fatalf("max_tokens = %v", recorded.Body["max_tokens"])
 	}
-	if recorded.Body["parallel_tool_calls"] != false {
-		t.Fatalf("parallel_tool_calls = %v", recorded.Body["parallel_tool_calls"])
+	// L10 修复后：parallel_tool_calls 仅在调用方显式提供时发送（Python 版
+	// 从不发送该字段），带 tools 的默认请求不应出现。
+	if _, exists := recorded.Body["parallel_tool_calls"]; exists {
+		t.Fatalf("parallel_tool_calls must be omitted by default, got %v", recorded.Body["parallel_tool_calls"])
 	}
 	tools := recorded.Body["tools"].([]any)
 	function := tools[0].(map[string]any)["function"].(map[string]any)

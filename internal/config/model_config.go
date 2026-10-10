@@ -2,6 +2,12 @@
 // (APIProvider/ModelInfo/TaskConfig/ModelTaskConfig) 与 default_model_config.py 的默认模板。
 package config
 
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
 // ---------------------------------------------------------------------------
 // APIProvider — aligned with model_configs.APIProvider
 // ---------------------------------------------------------------------------
@@ -10,21 +16,21 @@ package config
 // 裁剪面：organization/project/model_list_endpoint 等次要字段保留，
 // reasoning/tool 解析模式保留字符串枚举默认值。
 type APIProvider struct {
-	Name        string `toml:"name"`         // 服务商名称（models 中引用）
-	BaseURL     string `toml:"base_url"`     // 服务商 BaseURL
-	APIKey      string `toml:"api_key"`      // API 密钥
-	ClientType  string `toml:"client_type"`  // openai（内置）
-	AuthType    string `toml:"auth_type"`    // bearer|header|query|none
-	AuthHeaderName   string `toml:"auth_header_name"`
-	AuthHeaderPrefix string `toml:"auth_header_prefix"`
-	AuthQueryName    string `toml:"auth_query_name"`
-	DefaultHeaders   map[string]string `toml:"default_headers"`
-	DefaultQuery     map[string]string `toml:"default_query"`
-	ReasoningParseMode     string `toml:"reasoning_parse_mode"`     // auto|native|think_tag|none
-	ToolArgumentParseMode  string `toml:"tool_argument_parse_mode"` // auto|strict|repair|double_decode
-	MaxRetry      int `toml:"max_retry"`      // 含首次请求在内的最大请求总数
-	Timeout       int `toml:"timeout"`        // 请求超时（秒）
-	RetryInterval int `toml:"retry_interval"` // 重试间隔（秒）
+	Name                  string            `toml:"name"`        // 服务商名称（models 中引用）
+	BaseURL               string            `toml:"base_url"`    // 服务商 BaseURL
+	APIKey                string            `toml:"api_key"`     // API 密钥
+	ClientType            string            `toml:"client_type"` // openai（内置）
+	AuthType              string            `toml:"auth_type"`   // bearer|header|query|none
+	AuthHeaderName        string            `toml:"auth_header_name"`
+	AuthHeaderPrefix      string            `toml:"auth_header_prefix"`
+	AuthQueryName         string            `toml:"auth_query_name"`
+	DefaultHeaders        map[string]string `toml:"default_headers"`
+	DefaultQuery          map[string]string `toml:"default_query"`
+	ReasoningParseMode    string            `toml:"reasoning_parse_mode"`     // auto|native|think_tag|none
+	ToolArgumentParseMode string            `toml:"tool_argument_parse_mode"` // auto|strict|repair|double_decode
+	MaxRetry              int               `toml:"max_retry"`                // 含首次请求在内的最大请求总数
+	Timeout               int               `toml:"timeout"`                  // 请求超时（秒）
+	RetryInterval         int               `toml:"retry_interval"`           // 重试间隔（秒）
 }
 
 func defaultAPIProviderFields(p *APIProvider) {
@@ -85,7 +91,7 @@ type ModelInfo struct {
 	Name            string             `toml:"name"`             // 自定义名称（model_task_config 引用）
 	APIProvider     string             `toml:"api_provider"`
 	PriceIn         float64            `toml:"price_in"`
-	Cache           bool               `toml:"cache"`           // 遗留兼容字段，不参与逻辑
+	Cache           bool               `toml:"cache"` // 遗留兼容字段，不参与逻辑
 	CachePriceIn    float64            `toml:"cache_price_in"`
 	PriceOut        float64            `toml:"price_out"`
 	PricePeriods    []ModelPricePeriod `toml:"price_periods"`
@@ -104,7 +110,6 @@ func (m *ModelInfo) SendTemperatureOrDefault() bool {
 
 // BoolPtr 返回 bool 指针（模板构造用）。
 func BoolPtr(b bool) *bool { return &b }
-
 
 // ---------------------------------------------------------------------------
 // TaskConfig — aligned with model_configs.TaskConfig
@@ -136,34 +141,34 @@ func defaultTaskConfig() TaskConfig {
 // ModelTaskConfig 对齐 model_configs.ModelTaskConfig。
 // voice 任务保留（Python 版有该任务，本项目暂不使用但不裁掉字段）。
 type ModelTaskConfig struct {
-	Replyer        TaskConfig `toml:"replyer"`        // 回复模型
-	Planner        TaskConfig `toml:"planner"`        // 规划模型
-	Memory         TaskConfig `toml:"memory"`         // 长期记忆总结/抽取/写回
-	MidMemory      TaskConfig `toml:"mid_memory"`     // 聊天回想；留空回退 fast_model→utils
-	Utils          TaskConfig `toml:"utils"`          // 文本概括等小任务（必需）
-	Learner        TaskConfig `toml:"learner"`        // 表达/黑话学习；留空回退 utils
-	FastModel      TaskConfig `toml:"fast_model"`     // 快速小任务；留空回退 utils
-	Emoji          TaskConfig `toml:"emoji"`          // 表情包选择；留空回退 planner/vlm
-	VLM            TaskConfig `toml:"vlm"`            // 识图模型
-	Voice          TaskConfig `toml:"voice"`          // 语音识别
-	Embedding      TaskConfig `toml:"embedding"`      // 嵌入模型
+	Replyer        TaskConfig `toml:"replyer"`         // 回复模型
+	Planner        TaskConfig `toml:"planner"`         // 规划模型
+	Memory         TaskConfig `toml:"memory"`          // 长期记忆总结/抽取/写回
+	MidMemory      TaskConfig `toml:"mid_memory"`      // 聊天回想；留空回退 fast_model→utils
+	Utils          TaskConfig `toml:"utils"`           // 文本概括等小任务（必需）
+	Learner        TaskConfig `toml:"learner"`         // 表达/黑话学习；留空回退 utils
+	FastModel      TaskConfig `toml:"fast_model"`      // 快速小任务；留空回退 utils
+	Emoji          TaskConfig `toml:"emoji"`           // 表情包选择；留空回退 planner/vlm
+	VLM            TaskConfig `toml:"vlm"`             // 识图模型
+	Voice          TaskConfig `toml:"voice"`           // 语音识别
+	Embedding      TaskConfig `toml:"embedding"`       // 嵌入模型
 	ImageEmbedding TaskConfig `toml:"image_embedding"` // 图片嵌入
 }
 
 // TaskConfigs 返回任务名 → TaskConfig 的映射（对齐 ModelTaskConfig.model_fields 顺序）。
 func (m *ModelTaskConfig) TaskConfigs() map[string]*TaskConfig {
 	return map[string]*TaskConfig{
-		"replyer":        &m.Replyer,
-		"planner":        &m.Planner,
-		"memory":         &m.Memory,
-		"mid_memory":     &m.MidMemory,
-		"utils":          &m.Utils,
-		"learner":        &m.Learner,
-		"fast_model":     &m.FastModel,
-		"emoji":          &m.Emoji,
-		"vlm":            &m.VLM,
-		"voice":          &m.Voice,
-		"embedding":      &m.Embedding,
+		"replyer":         &m.Replyer,
+		"planner":         &m.Planner,
+		"memory":          &m.Memory,
+		"mid_memory":      &m.MidMemory,
+		"utils":           &m.Utils,
+		"learner":         &m.Learner,
+		"fast_model":      &m.FastModel,
+		"emoji":           &m.Emoji,
+		"vlm":             &m.VLM,
+		"voice":           &m.Voice,
+		"embedding":       &m.Embedding,
 		"image_embedding": &m.ImageEmbedding,
 	}
 }
@@ -201,9 +206,9 @@ func (m *ModelTaskConfig) ResolveTask(task string) []string {
 
 // ModelConfig 对齐 config.py class ModelConfig（model_config.toml 顶层结构）。
 type ModelConfig struct {
-	Models         []ModelInfo     `toml:"models"`
+	Models          []ModelInfo     `toml:"models"`
 	ModelTaskConfig ModelTaskConfig `toml:"model_task_config"`
-	APIProviders   []APIProvider   `toml:"api_providers"`
+	APIProviders    []APIProvider   `toml:"api_providers"`
 }
 
 // Validate 对齐 ModelConfig.model_post_init：非空、名称唯一、模型引用的 provider 必须存在。
@@ -257,19 +262,20 @@ var DefaultProviderTemplates = []APIProvider{
 		AuthType: "bearer", MaxRetry: 3, Timeout: 120, RetryInterval: 4,
 	},
 }
+
 // defaultTaskConfigTemplates 对齐 DEFAULT_TASK_CONFIG_TEMPLATES（缺省字段由 TaskConfig 默认值补齐）。
 var defaultTaskConfigTemplates = map[string]TaskConfig{
-	"utils":      {ModelList: []string{"deepseek-v4-flash"}, MaxTokens: 8192, Temperature: 0.5, SelectionStrategy: "random", HardTimeout: 120.0},
-	"memory":     {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.3, SelectionStrategy: "random", HardTimeout: 240.0},
-	"mid_memory": {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "random", HardTimeout: 180.0},
-	"replyer":    {ModelList: []string{"deepseek-v4-pro-think", "deepseek-v4-pro-nonthink"}, MaxTokens: 8192, Temperature: 1, SelectionStrategy: "random", HardTimeout: 240.0},
-	"planner":    {ModelList: []string{"deepseek-v4-flash"}, MaxTokens: 16384, Temperature: 0.7, SelectionStrategy: "random", HardTimeout: 180.0},
-	"learner":    {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 120.0},
-	"fast_model": {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.3, SelectionStrategy: "balance", HardTimeout: 120.0},
-	"emoji":      {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 120.0},
-	"vlm":        {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 240.0},
-	"voice":      {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 120.0},
-	"embedding":  {ModelList: []string{}, MaxTokens: 4096, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 60.0},
+	"utils":           {ModelList: []string{"deepseek-v4-flash"}, MaxTokens: 8192, Temperature: 0.5, SelectionStrategy: "random", HardTimeout: 120.0},
+	"memory":          {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.3, SelectionStrategy: "random", HardTimeout: 240.0},
+	"mid_memory":      {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "random", HardTimeout: 180.0},
+	"replyer":         {ModelList: []string{"deepseek-v4-pro-think", "deepseek-v4-pro-nonthink"}, MaxTokens: 8192, Temperature: 1, SelectionStrategy: "random", HardTimeout: 240.0},
+	"planner":         {ModelList: []string{"deepseek-v4-flash"}, MaxTokens: 16384, Temperature: 0.7, SelectionStrategy: "random", HardTimeout: 180.0},
+	"learner":         {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 120.0},
+	"fast_model":      {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.3, SelectionStrategy: "balance", HardTimeout: 120.0},
+	"emoji":           {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 120.0},
+	"vlm":             {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 240.0},
+	"voice":           {ModelList: []string{}, MaxTokens: 8192, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 120.0},
+	"embedding":       {ModelList: []string{}, MaxTokens: 4096, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 60.0},
 	"image_embedding": {ModelList: []string{}, MaxTokens: 4096, Temperature: 0.7, SelectionStrategy: "balance", HardTimeout: 60.0},
 }
 
@@ -333,4 +339,71 @@ func DefaultModelConfig() *ModelConfig {
 		models = []ModelInfo{}
 	}
 	return &ModelConfig{Models: models, ModelTaskConfig: mtc, APIProviders: providers}
+}
+
+// ---------------------------------------------------------------------------
+// 启动期 api_key 自检（L4）
+// ---------------------------------------------------------------------------
+
+// APIKeyPlaceholder 对齐默认模板内置的占位密钥（default_model_config.py 的
+// "your-api-key"）：仍为该值说明用户没有填写真实密钥。
+const APIKeyPlaceholder = "your-api-key"
+
+// APIKeyPlaceholderWarnings 返回启动期告警文案：被任务 model_list 实际引用的
+// provider 若 api_key 为空或仍是模板占位符，逐条返回「provider + 引用它的
+// 任务名」清单（对齐 Python 版启动时对默认密钥的警告行为——只警告、不阻断
+// 启动，交由用户在 WebUI/配置文件中补全）。返回空切片表示全部通过。
+func (c *ModelConfig) APIKeyPlaceholderWarnings() []string {
+	if c == nil {
+		return nil
+	}
+	badProviders := map[string]bool{}
+	for _, p := range c.APIProviders {
+		key := strings.TrimSpace(p.APIKey)
+		if key == "" || key == APIKeyPlaceholder {
+			badProviders[p.Name] = true
+		}
+	}
+	if len(badProviders) == 0 {
+		return nil
+	}
+
+	// 统计每个问题 provider 被哪些任务的 model_list 引用（去重 + 稳定排序）。
+	taskUsage := map[string]map[string]bool{}
+	for _, m := range c.Models {
+		if !badProviders[m.APIProvider] {
+			continue
+		}
+		for taskName, tc := range c.ModelTaskConfig.TaskConfigs() {
+			for _, modelName := range tc.ModelList {
+				if modelName == m.Name {
+					if taskUsage[m.APIProvider] == nil {
+						taskUsage[m.APIProvider] = map[string]bool{}
+					}
+					taskUsage[m.APIProvider][taskName] = true
+				}
+			}
+		}
+	}
+
+	warnings := make([]string, 0, len(badProviders))
+	for _, p := range c.APIProviders {
+		tasks := taskUsage[p.Name]
+		if len(tasks) == 0 {
+			continue // 只警告被任务实际引用的 provider
+		}
+		reason := "api_key 为空"
+		if strings.TrimSpace(p.APIKey) == APIKeyPlaceholder {
+			reason = "api_key 仍为模板占位符 " + APIKeyPlaceholder
+		}
+		taskNames := make([]string, 0, len(tasks))
+		for taskName := range tasks {
+			taskNames = append(taskNames, taskName)
+		}
+		sort.Strings(taskNames)
+		warnings = append(warnings, fmt.Sprintf(
+			"API 提供商 %q %s，被任务 [%s] 引用；模型请求将认证失败，请尽快在 config/model_config.toml 或 WebUI 中填写真实密钥",
+			p.Name, reason, strings.Join(taskNames, ", ")))
+	}
+	return warnings
 }

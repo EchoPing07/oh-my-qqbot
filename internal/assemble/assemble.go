@@ -143,6 +143,13 @@ func (a *App) SetupPhase1() error {
 	}
 	a.Cfg = cfg
 
+	// L4 修复：启动期 api_key 自检——被任务 model_list 引用的 provider 若
+	// api_key 为空或仍是模板占位符，打 Warn（列出任务名与 provider 名），
+	// 不阻断启动（对齐 Python 版对默认密钥的启动警告）。
+	for _, warning := range cfg.GetModelConfig().APIKeyPlaceholderWarnings() {
+		a.log.Warn(warning)
+	}
+
 	if err := os.MkdirAll(a.DataDir(), 0o755); err != nil {
 		return err
 	}
@@ -484,25 +491,56 @@ func bridgeModelConfig(src *config.ModelConfig) llm.ModelConfig {
 		return out
 	}
 	for _, p := range src.APIProviders {
+		// L8 修复：补全 provider 侧认证与默认请求参数映射（此前 AuthType 等
+		// 字段全部丢失，非 bearer 认证的 provider 无法通过鉴权）。
+		defaultQuery := map[string]any{}
+		for key, value := range p.DefaultQuery {
+			defaultQuery[key] = value
+		}
 		out.Providers[p.Name] = llm.APIProvider{
-			Name:          p.Name,
-			BaseURL:       p.BaseURL,
-			APIKey:        p.APIKey,
-			MaxRetry:      p.MaxRetry,
-			Timeout:       float64(p.Timeout),
-			RetryInterval: float64(p.RetryInterval),
-			ClientType:    p.ClientType,
+			Name:             p.Name,
+			BaseURL:          p.BaseURL,
+			APIKey:           p.APIKey,
+			AuthType:         llm.AuthKind(p.AuthType),
+			AuthHeaderName:   p.AuthHeaderName,
+			AuthHeaderPrefix: p.AuthHeaderPrefix,
+			AuthQueryName:    p.AuthQueryName,
+			DefaultHeaders:   copyStringMap(p.DefaultHeaders),
+			DefaultQuery:     defaultQuery,
+			MaxRetry:         p.MaxRetry,
+			Timeout:          float64(p.Timeout),
+			RetryInterval:    float64(p.RetryInterval),
+			ClientType:       p.ClientType,
 		}
 	}
 	for _, m := range src.Models {
+		// L8 修复：补全 model 侧参数映射（ExtraParams/MaxTokens/Temperature/
+		// ForceStreamMode/CachePriceIn/PricePeriods 此前全部丢失——思维链开关、
+		// 模型级温度与 token 上限、缓存计价均不生效）。
+		pricePeriods := make([]llm.ModelPricePeriod, 0, len(m.PricePeriods))
+		for _, period := range m.PricePeriods {
+			pricePeriods = append(pricePeriods, llm.ModelPricePeriod{
+				StartTime:    period.StartTime,
+				EndTime:      period.EndTime,
+				PriceIn:      period.PriceIn,
+				PriceOut:     period.PriceOut,
+				CachePriceIn: period.CachePriceIn,
+			})
+		}
 		out.Models[m.Name] = llm.ModelInfo{
 			ModelIdentifier: m.ModelIdentifier,
 			Name:            m.Name,
 			APIProvider:     m.APIProvider,
 			PriceIn:         m.PriceIn,
+			CachePriceIn:    m.CachePriceIn,
 			PriceOut:        m.PriceOut,
+			PricePeriods:    pricePeriods,
+			Temperature:     m.Temperature,
 			SendTemperature: m.SendTemperature,
+			MaxTokens:       m.MaxTokens,
+			ForceStreamMode: m.ForceStreamMode,
 			Visual:          m.Visual,
+			ExtraParams:     copyAnyMap(m.ExtraParams),
 		}
 	}
 	for name, tc := range src.ModelTaskConfig.TaskConfigs() {
@@ -514,6 +552,24 @@ func bridgeModelConfig(src *config.ModelConfig) llm.ModelConfig {
 			SelectionStrategy: tc.SelectionStrategy,
 			HardTimeout:       tc.HardTimeout,
 		}
+	}
+	return out
+}
+
+// copyStringMap / copyAnyMap 拷贝 map，避免桥接结果与 config 侧共享底层存储
+// （config 对象可能被热重载替换或继续演化，桥接输出应为独立副本）。
+func copyStringMap(src map[string]string) map[string]string {
+	out := make(map[string]string, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
+func copyAnyMap(src map[string]any) map[string]any {
+	out := make(map[string]any, len(src))
+	for key, value := range src {
+		out[key] = value
 	}
 	return out
 }

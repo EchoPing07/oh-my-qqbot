@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // ---------------------------------------------------------------------------
@@ -552,15 +553,22 @@ func apiCodeOK(raw any) bool {
 
 // callREST 执行一次带鉴权的 REST 调用: 401 时刷 token 重试一次, 5xx/429 重试一次。
 func (a *APIClient) callREST(ctx context.Context, method string, endpoint string, payload any, out any) error {
+	_, err := a.callRESTRaw(ctx, method, endpoint, payload, out)
+	return err
+}
+
+// callRESTRaw 是 callREST 的原始响应版本: 成功时返回响应体 (可能是数组等非对象
+// JSON), 供 CallAPI 包装 (B1); 重试与错误语义和 callREST 完全一致。
+func (a *APIClient) callRESTRaw(ctx context.Context, method string, endpoint string, payload any, out any) ([]byte, error) {
 	auth, err := a.AuthHeader(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		req, err := a.newRequest(ctx, method, endpoint, map[string]string{"Authorization": auth}, payload)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		body, status, err := a.httpDo(ctx, req)
 		if err != nil {
@@ -568,18 +576,30 @@ func (a *APIClient) callREST(ctx context.Context, method string, endpoint string
 			break
 		}
 		if status == http.StatusUnauthorized {
+			// A1: 401 只重试一次 —— 第二次仍 401 必须显式报错。旧代码循环耗尽后
+			// lastErr 为 nil、函数级 err 也是 nil, 上层把失败当成功 (空 MessageID),
+			// 已扣的额度/被动次数也不会回滚。
+			if attempt > 0 {
+				return body, &APIError{
+					Code:    strconv.Itoa(status),
+					Message: "token 刷新后仍被拒绝: " + truncate(string(body), 256),
+					Status:  status,
+				}
+			}
 			// token 过期或被踢: 丢掉缓存换一个新的重试一次。
 			a.tokens.Invalidate()
 			a.log("qq: REST 401, 刷新 token 后重试 (%s %s)", method, endpoint)
 			if auth, err = a.AuthHeader(ctx); err != nil {
-				return err
+				return nil, err
 			}
 			continue
 		}
-		decoded := decodeEnvelope(body, status, out)
 		if status >= 200 && status < 300 {
-			return decoded
+			// B5: 只有 2xx 才解析进出参 —— 429/5xx 重试场景下, 失败响应体若先
+			// Unmarshal 进出参 (map) 会残留旧键, 污染重试成功后的解析结果。
+			return body, decodeEnvelope(body, status, out)
 		}
+		decoded := decodeEnvelope(body, status, nil)
 		if decoded != nil {
 			lastErr = decoded
 		} else {
@@ -591,9 +611,10 @@ func (a *APIClient) callREST(ctx context.Context, method string, endpoint string
 		break
 	}
 	if lastErr != nil {
-		return lastErr
+		return nil, lastErr
 	}
-	return err
+	// A1: 兜底 —— 任何非成功路径都不允许返回 nil (旧代码此处 return err 恒为 nil)。
+	return nil, fmt.Errorf("qq: 请求失败 (%s %s)", method, endpoint)
 }
 
 // isRetryableStatus 判断 HTTP 状态码是否值得重试一次 (限频 / 网关抖动)。
@@ -642,9 +663,19 @@ func (a *APIClient) CallAPI(ctx context.Context, action string, params map[strin
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]any{}
-	if err := a.callREST(ctx, method, endpoint, payload, &out); err != nil {
+	// B1: 成功响应可能是数组等非对象 JSON, 走原始响应版本自己解 (对齐 Diana
+	// qq_official.go 的 CallAPI); 错误码 / 非 2xx 仍由 callRESTRaw 统一报错。
+	raw, err := a.callRESTRaw(ctx, method, endpoint, payload, nil)
+	if err != nil {
 		return nil, err
+	}
+	out := map[string]any{}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return out, nil
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		// 非对象响应包一层 {"result": <原始 JSON>} 返回, 不再整单报错。
+		return map[string]any{"result": json.RawMessage(raw)}, nil
 	}
 	return out, nil
 }
@@ -884,9 +915,13 @@ func (a *APIClient) MessageReferenceFor(messageID string) map[string]any {
 }
 
 // truncate 截断文本用于错误信息 (避免把整段响应塞进日志)。
+// P3b: 回退到 rune 边界, 避免把多字节 UTF-8 字符切成非法字节序列。
 func truncate(value string, limit int) string {
 	if len(value) <= limit {
 		return value
+	}
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
 	}
 	return value[:limit] + "…"
 }

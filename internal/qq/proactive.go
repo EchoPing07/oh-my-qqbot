@@ -167,6 +167,9 @@ type ProactiveLedger struct {
 	groups  map[string]*groupQuota
 	bot     []time.Time
 	lastErr *ProactiveQuotaError
+	// pendingRejects 暂存待触发的 OnReject 回调 (P3d): rejectLocked 持锁时只入队,
+	// 公开方法解锁后统一触发。
+	pendingRejects []func()
 	// passive 记着每个触发消息 id 已经完成的被动回复, 用于次数上限判定与
 	// msg_seq 分配 (与主动额度正交: 被动回复不占额度, 但要占这个次数)。
 	passive map[string][]passiveReply
@@ -192,8 +195,10 @@ func (l *ProactiveLedger) Check(scope ProactiveScope, now time.Time) error {
 		now = l.opts.now()
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.checkLocked(scope, now)
+	err := l.checkLocked(scope, now)
+	l.mu.Unlock()
+	l.firePendingRejects()
+	return err
 }
 
 // Commit 在发送成功后记账。必须在 Check 通过之后调用, 且只记成功的一次。
@@ -206,41 +211,63 @@ func (l *ProactiveLedger) Commit(scope ProactiveScope, now time.Time) {
 	l.commitLocked(scope, now)
 }
 
-// Reserve 是 Check + Commit 的原子版本: 检查通过后立即记账, 避免并发超发。
-// 返回非 nil 错误时没有记账。
-func (l *ProactiveLedger) Reserve(scope ProactiveScope, now time.Time) error {
-	if now.IsZero() {
-		now = l.opts.now()
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if err := l.checkLocked(scope, now); err != nil {
-		return err
-	}
-	l.commitLocked(scope, now)
-	return nil
+// ProactiveTicket 是一次 Reserve 的回执 (B3): 记下这次记账写入了哪些计数, 供
+// Release 精确回滚 —— 旧的"弹栈"式回滚在并发下会删掉别人的记录。
+type ProactiveTicket struct {
+	// Scope 是这次记账的目标。
+	Scope ProactiveScope
+	// At 是记账时刻 (群滑动窗口 / 全局窗口里写入的那条时间戳)。
+	At time.Time
+	// DayStamp 是日计数归属的日期键: 跨日回滚时不再扣减新一天的计数。
+	DayStamp string
 }
 
-// Release 撤销一次记账 (发送失败时回滚 Reserve)。
-func (l *ProactiveLedger) Release(scope ProactiveScope, now time.Time) {
+// Reserve 是 Check + Commit 的原子版本: 检查通过后立即记账, 避免并发超发。
+// 返回非 nil 错误时没有记账; 成功时返回回执票据, 供 Release 按票据精确回滚 (B3)。
+func (l *ProactiveLedger) Reserve(scope ProactiveScope, now time.Time) (ProactiveTicket, error) {
 	if now.IsZero() {
 		now = l.opts.now()
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	err := l.checkLocked(scope, now)
+	if err != nil {
+		l.mu.Unlock()
+		l.firePendingRejects()
+		return ProactiveTicket{}, err
+	}
+	ticket := ProactiveTicket{Scope: scope, At: now}
 	if scope.GroupID != "" {
-		if entry, ok := l.groups[scope.GroupID]; ok {
-			if len(entry.timestamps) > 0 {
-				entry.timestamps = entry.timestamps[:len(entry.timestamps)-1]
-			}
-			if entry.dayCount > 0 {
+		entry := l.groupForLocked(scope.GroupID, now)
+		entry.timestamps = append(entry.timestamps, now)
+		entry.dayCount++
+		ticket.DayStamp = entry.dayStamp
+	}
+	l.bot = append(l.bot, now)
+	l.mu.Unlock()
+	l.firePendingRejects()
+	return ticket, nil
+}
+
+// Release 按票据精确回滚一次 Reserve (B3): 只删票据对应的那条记账, 找不到票据
+// (已被滑窗清理 / 重复回滚) 时不动其他记录。零值票据是 no-op。
+func (l *ProactiveLedger) Release(ticket ProactiveTicket) {
+	if ticket.At.IsZero() {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if ticket.Scope.GroupID != "" {
+		if entry, ok := l.groups[ticket.Scope.GroupID]; ok {
+			kept, removed := removeTime(entry.timestamps, ticket.At)
+			entry.timestamps = kept
+			// 日计数只在同一日内、且确实删掉了票据对应的时间戳时才回滚 ——
+			// 否则重复回滚会把日计数扣成负向偏差。
+			if removed && entry.dayStamp == ticket.DayStamp && entry.dayCount > 0 {
 				entry.dayCount--
 			}
 		}
 	}
-	if len(l.bot) > 0 {
-		l.bot = l.bot[:len(l.bot)-1]
-	}
+	l.bot, _ = removeTime(l.bot, ticket.At)
 }
 
 // Usage 返回当前额度用量快照 (供 WebUI / 日志)。
@@ -304,6 +331,7 @@ func (l *ProactiveLedger) Reset() {
 	l.groups = map[string]*groupQuota{}
 	l.bot = nil
 	l.lastErr = nil
+	l.pendingRejects = nil
 	l.passive = nil
 }
 
@@ -361,10 +389,24 @@ func (l *ProactiveLedger) rejectLocked(kind ProactiveQuotaKind, scope ProactiveS
 		Remaining: remaining,
 	}
 	l.lastErr = err
-	if l.opts.OnReject != nil {
-		l.opts.OnReject(scope, err)
+	if onReject := l.opts.OnReject; onReject != nil {
+		// P3d: OnReject 回调不再持锁调用 —— 回调里若再进台账会死锁。先暂存,
+		// 由触发本次检查的公开方法在解锁后触发 (firePendingRejects)。
+		callback := onReject
+		l.pendingRejects = append(l.pendingRejects, func() { callback(scope, err) })
 	}
 	return err
+}
+
+// firePendingRejects 在锁外触发暂存的 OnReject 回调 (P3d)。
+func (l *ProactiveLedger) firePendingRejects() {
+	l.mu.Lock()
+	callbacks := l.pendingRejects
+	l.pendingRejects = nil
+	l.mu.Unlock()
+	for _, callback := range callbacks {
+		callback()
+	}
 }
 
 // groupForLocked 取 (或建) 一个群的计数; 日期变了就先重置日计数。
@@ -405,6 +447,17 @@ func dropOlderThan(sorted []time.Time, cutoff time.Time) []time.Time {
 	return sorted[:keep]
 }
 
+// removeTime 删除切片中第一条等于 target 的时刻 (票据回滚用, B3); 返回新切片与
+// 是否确实删除了一条 —— 找不到时原样返回, 不动其他记录。
+func removeTime(sorted []time.Time, target time.Time) ([]time.Time, bool) {
+	for i, stamp := range sorted {
+		if stamp.Equal(target) {
+			return append(sorted[:i], sorted[i+1:]...), true
+		}
+	}
+	return sorted, false
+}
+
 // dayStamp 取当天日期键 (yyyy-mm-dd, 按给定时区)。
 func dayStamp(now time.Time, loc *time.Location) string {
 	if loc == nil {
@@ -433,10 +486,20 @@ func nextMidnight(now time.Time, loc *time.Location) time.Time {
 
 // 被动回复的官方约束。
 const (
-	// PassiveWindow 是被动回复的有效期 (带 msg_id 回复超过这个时长会被拒)。
+	// PassiveWindow 是群聊被动回复的有效期 (带 msg_id 回复超过这个时长会被拒)。
 	PassiveWindow = 5 * time.Minute
-	// PassiveMaxReplies 是同一条消息最多能被被动回复的次数。
+	// PassiveMaxReplies 是群聊同一条消息最多能被被动回复的次数。
 	PassiveMaxReplies = 5
+	// C2CPassiveWindow 是单聊 (C2C) 被动回复的有效期: 单聊窗口比群聊宽得多
+	// (B2, 对齐 参考/qq-official-adapter/constants.py 与 Diana)。
+	C2CPassiveWindow = 60 * time.Minute
+	// C2CPassiveMaxReplies 是单聊同一条消息最多能被被动回复的次数 (B2)。
+	C2CPassiveMaxReplies = 4
+	// passiveWindowMargin 是判定被动窗口时预留的安全余量 (B4): 平台按服务端时间
+	// 判定窗口, 本地时钟偏差与网络往返都会吃掉窗口边缘, 统一预留 60 秒 —— 即群聊
+	// 实际可用 4 分钟 (对齐 Python GROUP_PASSIVE_REPLY_TTL_SEC=4*60)、单聊 59 分钟
+	// (对齐 PRIVATE_PASSIVE_REPLY_TTL_SEC=59*60)。
+	passiveWindowMargin = time.Minute
 )
 
 // SendMode 是一次出站消息的发送模式。
@@ -476,25 +539,43 @@ func (d SendDecision) Err() error {
 
 // DecideSendMode 决定一次出站消息走被动还是主动 (§6.12 发送决策 1/2)。
 //
-// 规则: 有触发 msg_id 且未超 5 分钟且该 msg_id 已被动回复次数 < 5 → 被动;
-// 否则 → 主动 (先过额度台账, 额度不足返回 *ProactiveQuotaError)。
+// 规则: 有触发 msg_id 且未超窗口 (群 5 分钟 / 单聊 60 分钟, 各预留 60 秒余量) 且
+// 该 msg_id 已被动回复次数 < 上限 (群 5 次 / 单聊 4 次) → 被动; 否则 → 主动
+// (先过额度台账, 额度不足返回 *ProactiveQuotaError)。
 //
 // 每段独立决策: reply 工具的多段回复中, 前几段走被动, 超过次数上限的后续段自动
 // 降级为主动 (额度不足则放弃该段)。
 //
 // now 为零值时用 ledger 的时钟。ledger 为 nil 时不做额度检查 (仅按窗口/次数决策)。
 func DecideSendMode(ledger *ProactiveLedger, scope ProactiveScope, triggerID string, triggerTime time.Time, now time.Time) SendDecision {
-	return DecideSendModeWith(ledger, scope, triggerID, triggerTime, now, PassiveWindow, PassiveMaxReplies)
+	// B2: 窗口/次数交由 DecideSendModeWith 按 scope (群聊/单聊) 取默认。
+	return DecideSendModeWith(ledger, scope, triggerID, triggerTime, now, 0, 0)
 }
 
 // DecideSendModeWith 是 DecideSendMode 的可配置版本: window / maxReplies 非正数时
-// 用 PassiveWindow / PassiveMaxReplies。Channel 用它把 Options 的覆盖值接进来。
+// 按 scope 取默认 —— 群聊 5 分钟 / 5 次, 单聊 (无 GroupID) 60 分钟 / 4 次 (B2,
+// 对齐 Python constants.py / Diana); 显式覆盖对群聊与单聊都生效。
+// Channel 用它把 Options 的覆盖值接进来。
 func DecideSendModeWith(ledger *ProactiveLedger, scope ProactiveScope, triggerID string, triggerTime time.Time, now time.Time, window time.Duration, maxReplies int) SendDecision {
-	if window <= 0 {
-		window = PassiveWindow
+	if scope.GroupID == "" {
+		if window <= 0 {
+			window = C2CPassiveWindow
+		}
+		if maxReplies <= 0 {
+			maxReplies = C2CPassiveMaxReplies
+		}
+	} else {
+		if window <= 0 {
+			window = PassiveWindow
+		}
+		if maxReplies <= 0 {
+			maxReplies = PassiveMaxReplies
+		}
 	}
-	if maxReplies <= 0 {
-		maxReplies = PassiveMaxReplies
+	// B4: 判定窗口预留 60 秒安全余量 (对齐 Python 的 *_PASSIVE_REPLY_TTL_SEC);
+	// 窗口比余量还短时不扣, 避免窗口被打穿。
+	if window > passiveWindowMargin {
+		window -= passiveWindowMargin
 	}
 	triggerID = trim(triggerID)
 	if now.IsZero() {
@@ -566,7 +647,7 @@ type passiveReply struct {
 //
 // 平台按 (msg_id, msg_seq) 去重, 同一触发消息的第 N 次回复必须用 seq=N; 重复会
 // 命中 40054005。分配即计数 (失败的尝试也占一次, 与平台侧语义一致), 只有确认没
-// 到达平台的失败才用 DropPassive 回滚。
+// 到达平台的失败才用 DropPassive 按票据 (seq) 回滚 (B3)。
 func (l *ProactiveLedger) AllocatePassiveSeq(triggerID string, now time.Time, body string) int {
 	triggerID = trim(triggerID)
 	if triggerID == "" {
@@ -582,7 +663,15 @@ func (l *ProactiveLedger) AllocatePassiveSeq(triggerID string, now time.Time, bo
 	}
 	l.prunePassiveLocked(now)
 	entries := l.passive[triggerID]
-	seq := len(entries) + 1
+	// B3: 下一个 seq 取已有最大值 +1, 而不是 len+1 —— 按票据回滚可能删掉中间的
+	// 条目, len+1 会撞上还活着的 seq。
+	seq := 0
+	for _, entry := range entries {
+		if entry.seq > seq {
+			seq = entry.seq
+		}
+	}
+	seq++
 	entries = append(entries, passiveReply{seq: seq, at: now, body: trim(body)})
 	l.passive[triggerID] = entries
 	return seq
@@ -617,19 +706,23 @@ func (l *ProactiveLedger) PassiveBodies(triggerID string) []string {
 	return out
 }
 
-// DropPassive 撤销最近一次被动记账 (发送未到达平台时回滚, 让次数可复用)。
-func (l *ProactiveLedger) DropPassive(triggerID string) {
+// DropPassive 按票据 (msg_seq) 精确撤销一次被动记账 (发送未到达平台时回滚,
+// 让次数可复用)。B3: 只删 seq 对应的条目, 找不到票据时不动其他记录 —— 旧的
+// "弹栈"式回滚在并发下会删错别人的记录。
+func (l *ProactiveLedger) DropPassive(triggerID string, seq int) {
 	triggerID = trim(triggerID)
-	if triggerID == "" {
+	if triggerID == "" || seq <= 0 {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	entries := l.passive[triggerID]
-	if len(entries) == 0 {
-		return
+	for i, entry := range entries {
+		if entry.seq == seq {
+			entries = append(entries[:i], entries[i+1:]...)
+			break
+		}
 	}
-	entries = entries[:len(entries)-1]
 	if len(entries) == 0 {
 		delete(l.passive, triggerID)
 		return

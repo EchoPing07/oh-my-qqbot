@@ -488,3 +488,53 @@ func TestBuildPersonalityEmotionSuffix(t *testing.T) {
 		t.Errorf("未知档位应回退 neutral: %q", got)
 	}
 }
+
+// TestModelConfigAPIKeyPlaceholderWarnings 验证 L4：被任务 model_list 引用的
+// provider 若 api_key 为空或仍是占位符，返回启动期警告（列出 provider 与任务名）；
+// 未被引用或密钥正常时不告警。
+func TestModelConfigAPIKeyPlaceholderWarnings(t *testing.T) {
+	buildConfig := func(apiKey string) *ModelConfig {
+		return &ModelConfig{
+			APIProviders: []APIProvider{
+				{Name: "DeepSeek", BaseURL: "https://api.deepseek.com", APIKey: apiKey},
+				{Name: "Unused", BaseURL: "https://unused.example", APIKey: APIKeyPlaceholder},
+			},
+			Models: []ModelInfo{
+				{ModelIdentifier: "deepseek-chat", Name: "deepseek-chat", APIProvider: "DeepSeek"},
+			},
+			ModelTaskConfig: ModelTaskConfig{
+				Utils:   TaskConfig{ModelList: []string{"deepseek-chat"}},
+				Planner: TaskConfig{ModelList: []string{"deepseek-chat"}},
+			},
+		}
+	}
+
+	// 占位符密钥：两个引用任务都要出现在同一条警告里。
+	warnings := buildConfig(APIKeyPlaceholder).APIKeyPlaceholderWarnings()
+	if len(warnings) != 1 {
+		t.Fatalf("占位符密钥应产生 1 条警告: %#v", warnings)
+	}
+	if !strings.Contains(warnings[0], "DeepSeek") || !strings.Contains(warnings[0], "utils") || !strings.Contains(warnings[0], "planner") {
+		t.Errorf("警告应包含 provider 与任务名: %q", warnings[0])
+	}
+	// 未被任务引用的 provider（Unused）不告警。
+	if strings.Contains(warnings[0], "Unused") {
+		t.Errorf("未引用的 provider 不应告警: %q", warnings[0])
+	}
+
+	// 空 api_key 同样告警。
+	warnings = buildConfig("  ").APIKeyPlaceholderWarnings()
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "api_key 为空") {
+		t.Fatalf("空 api_key 应告警: %#v", warnings)
+	}
+
+	// 真实密钥：无告警。
+	if warnings := buildConfig("sk-real-key").APIKeyPlaceholderWarnings(); len(warnings) != 0 {
+		t.Fatalf("真实密钥不应告警: %#v", warnings)
+	}
+
+	// nil 接收者安全。
+	if warnings := (*ModelConfig)(nil).APIKeyPlaceholderWarnings(); warnings != nil {
+		t.Fatalf("nil 配置应返回 nil: %#v", warnings)
+	}
+}
