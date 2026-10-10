@@ -74,6 +74,9 @@ type Options struct {
 	LogBuffer int
 	// LogLevelVar slog 级别变量（与宿主日志系统共享时注入）。
 	LogLevelVar *slogLevelVar
+	// Logs 外部注入的日志服务（宿主把主程序 slog 接入此 handler 时共享实例）。
+	// 为空时内部自建（此时主程序日志不会进入 WebUI 日志面）。
+	Logs *routers.LogService
 }
 
 // Server 是 WebUI 后端宿主：组合鉴权/WS hub/monitor 桥/REST 路由。
@@ -117,7 +120,13 @@ func NewServer(opts Options) (*Server, error) {
 	}
 
 	hub := NewWSHub(tm)
-	logs := routers.NewLogService(opts.LogBuffer, opts.LogLevelVar, hub)
+	// 日志服务：优先用宿主注入的实例（主程序 slog 已接入），否则内部自建。
+	logs := opts.Logs
+	if logs == nil {
+		logs = routers.NewLogService(opts.LogBuffer, opts.LogLevelVar, hub)
+	} else {
+		logs.SetHub(hub)
+	}
 	monitor := NewMonitorBridge(opts.Bus, hub, opts.SnapshotHistory)
 
 	deps := &routers.Deps{
@@ -132,6 +141,7 @@ func NewServer(opts Options) (*Server, error) {
 		StartedAt: time.Now(),
 		DataDir:   opts.DataDir,
 		NewsURL:   opts.NewsURL,
+		DB:        opts.DB,
 	}
 
 	// 配置管理器（config 目录存在时才装配）。

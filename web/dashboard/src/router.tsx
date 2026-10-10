@@ -1,19 +1,17 @@
-import {
-  createRootRoute,
-  createRoute,
-  createRouter,
-  lazyRouteComponent,
-  Outlet,
-  redirect,
-} from '@tanstack/react-router'
-import { NotFoundPage } from './routes/404'
-import { Layout } from './components/layout'
-import { RoutePendingFallback } from './components/route-pending-fallback'
-import { checkAuth } from './hooks/use-auth'
-import { RouteErrorBoundary } from './components/error-boundary'
+/**
+ * 路由清单 — 页面与 Go 后端路由一一对应。
+ * 受保护路由经 rootRoute.beforeLoad 统一鉴权（本地 token → /auth/check）。
+ */
 
-// Root 路由：所有非公开路由（protected 分支）在进入前统一鉴权；
-// /auth 与 /setup 自行处理未认证态，不做根层跳转。
+import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router'
+
+import { checkAuth } from '@/api/auth'
+import { getStoredToken } from '@/lib/token'
+import { Layout } from '@/components/Layout'
+import { NotFoundPage } from '@/pages/NotFound'
+import { RouteErrorBoundary } from '@/components/ErrorBoundary'
+import { RoutePendingFallback } from '@/components/RoutePendingFallback'
+
 const rootRoute = createRootRoute({
   component: Outlet,
   beforeLoad: ({ location }) => {
@@ -21,7 +19,6 @@ const rootRoute = createRootRoute({
     if (publicPaths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))) {
       return
     }
-
     return checkAuth().then((authenticated) => {
       if (!authenticated) {
         throw redirect({
@@ -33,21 +30,28 @@ const rootRoute = createRootRoute({
   },
 })
 
-// 认证路由（无 Layout）
+// ── 公开路由 ──
+
 const authRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/auth',
-  component: lazyRouteComponent(() => import('./routes/auth'), 'AuthPage'),
+  component: lazyPage(() => import('@/pages/Auth'), 'AuthPage'),
 })
 
-// 首次配置路由（无 Layout）
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/setup',
-  component: lazyRouteComponent(() => import('./routes/setup/index.tsx'), 'SetupPage'),
+  component: lazyPage(() => import('@/pages/Setup'), 'SetupPage'),
 })
 
-// 受保护的路由 Root（带 Layout）
+const chatEmbedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/chat/embed',
+  component: lazyPage(() => import('@/pages/ChatEmbed'), 'ChatEmbedPage'),
+})
+
+// ── 受保护路由（带 Layout） ──
+
 const protectedRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'protected',
@@ -59,230 +63,143 @@ const protectedRoute = createRoute({
   errorComponent: ({ error }) => <RouteErrorBoundary error={error} />,
 })
 
-// 首页路由
 const indexRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/',
-  component: lazyRouteComponent(() => import('./routes/index'), 'IndexPage'),
+  component: lazyPage(() => import('@/pages/Home'), 'HomePage'),
 })
 
-// 详细统计路由
-const statisticsRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/statistics',
-  component: lazyRouteComponent(() => import('./routes/logs'), 'StatisticsLogViewerPage'),
-})
-
-const replyEffectsRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/reply-effects',
-  component: lazyRouteComponent(() => import('./routes/reply-effects'), 'ReplyEffectsPage'),
-})
-
-// 配置路由 - 机器人主程序配置
-const botConfigRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/config/bot',
-  beforeLoad: ({ location }) => {
-    const params = new URLSearchParams(location.searchStr)
-    if (params.get('mode') !== 'webui') return
-    params.delete('mode')
-    const search = params.size ? `?${params.toString()}` : ''
-    // 兼容此前内嵌 WebUI 设置的链接，保留页签参数和 hash。
-    const hash = location.hash ? `#${location.hash.replace(/^#/, '')}` : ''
-    throw redirect({ href: `/settings${search}${hash}`, replace: true })
-  },
-  component: lazyRouteComponent(() => import('./routes/config/bot'), 'BotConfigPage'),
-})
-
-// 配置路由 - 机器人模型配置
-const modelConfigRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/config/model',
-  component: lazyRouteComponent(() => import('./routes/config/model'), 'ModelConfigPage'),
-})
-
-// 配置路由 - Prompt 管理
-const promptManagementRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/config/prompts',
-  component: lazyRouteComponent(() => import('./routes/config/prompts'), 'PromptManagementPage'),
-})
-
-// 资源管理路由 - 表情包管理
-const emojiManagementRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/resource/emoji',
-  component: lazyRouteComponent(
-    () => import('./routes/resource/emoji/index.tsx'),
-    'EmojiManagementPage'
-  ),
-})
-
-// 资源管理路由 - 表达方式管理
-const expressionManagementRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/resource/expression',
-  component: lazyRouteComponent(
-    () => import('./routes/resource/expression/index.tsx'),
-    'ExpressionManagementPage'
-  ),
-})
-
-// 资源管理路由 - 人物信息管理
-const personManagementRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/resource/person',
-  component: lazyRouteComponent(() => import('./routes/person'), 'PersonManagementPage'),
-})
-
-// 资源管理路由 - 黑话管理
-const jargonManagementRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/resource/jargon',
-  component: lazyRouteComponent(
-    () => import('./routes/resource/jargon/index.tsx'),
-    'JargonManagementPage'
-  ),
-})
-
-// 资源管理路由 - 知识库图谱可视化
-const behaviorLearningRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/resource/behavior',
-  component: lazyRouteComponent(
-    () => import('./routes/resource/behavior/index.tsx'),
-    'BehaviorLearningPage'
-  ),
-})
-
-const knowledgeGraphRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/resource/knowledge-graph',
-  component: lazyRouteComponent(
-    () => import('./routes/resource/knowledge-graph/index.tsx'),
-    'KnowledgeGraphPage'
-  ),
-})
-
-// 资源管理路由 - 机器人知识库管理
-const knowledgeBaseRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/resource/knowledge-base',
-  component: lazyRouteComponent(
-    () => import('./routes/resource/knowledge-base'),
-    'KnowledgeBasePage'
-  ),
-})
-
-// 日志查看器路由
-const logsRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/logs',
-  component: lazyRouteComponent(() => import('./routes/logs'), 'LogViewerPage'),
-})
-
-const reasoningProcessRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/reasoning-process',
-  component: lazyRouteComponent(() => import('./routes/logs'), 'ReasoningLogViewerPage'),
-})
-
-// 运行时聊天流监控路由
-const plannerMonitorRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/planner-monitor',
-  component: lazyRouteComponent(() => import('./routes/monitor/index.tsx'), 'PlannerMonitorPage'),
-})
-
-// 本地聊天室路由
 const chatRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/chat',
-  component: lazyRouteComponent(() => import('./routes/chat/index'), 'ChatPage'),
+  component: lazyPage(() => import('@/pages/Chat'), 'ChatPage'),
 })
 
-// 聊天管理路由
-const chatManagementRoute = createRoute({
+const botConfigRoute = createRoute({
   getParentRoute: () => protectedRoute,
-  path: '/chat-management',
-  component: lazyRouteComponent(() => import('./routes/chat-management'), 'ChatManagementPage'),
+  path: '/config/bot',
+  component: lazyPage(() => import('@/pages/BotConfig'), 'BotConfigPage'),
 })
 
-// 外部程序嵌入用聊天室路由，不挂载 dashboard 顶栏
-const chatEmbedRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/chat/embed',
-  component: lazyRouteComponent(() => import('./routes/chat/embed'), 'ChatEmbedPage'),
+const modelConfigRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/config/model',
+  component: lazyPage(() => import('@/pages/ModelConfig'), 'ModelConfigPage'),
 })
 
-// 数据迁移与备份路由
+const emojiRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/resource/emoji',
+  component: lazyPage(() => import('@/pages/Emoji'), 'EmojiPage'),
+})
+
+const expressionRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/resource/expression',
+  component: lazyPage(() => import('@/pages/Expression'), 'ExpressionPage'),
+})
+
+const jargonRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/resource/jargon',
+  component: lazyPage(() => import('@/pages/Jargon'), 'JargonPage'),
+})
+
+const personRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/resource/person',
+  component: lazyPage(() => import('@/pages/Person'), 'PersonPage'),
+})
+
+const memoryRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/resource/memory',
+  component: lazyPage(() => import('@/pages/Memory'), 'MemoryPage'),
+})
+
+const monitorRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/monitor',
+  component: lazyPage(() => import('@/pages/Monitor'), 'MonitorPage'),
+})
+
+const reasoningRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/reasoning-process',
+  component: lazyPage(() => import('@/pages/ReasoningProcess'), 'ReasoningProcessPage'),
+})
+
+const logsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/logs',
+  component: lazyPage(() => import('@/pages/Logs'), 'LogsPage'),
+})
+
+const statisticsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/statistics',
+  component: lazyPage(() => import('@/pages/Statistics'), 'StatisticsPage'),
+})
+
 const dataTransferRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/data-transfer',
-  component: lazyRouteComponent(() => import('./routes/data-transfer'), 'DataTransferPage'),
+  component: lazyPage(() => import('@/pages/DataTransfer'), 'DataTransferPage'),
 })
 
 const settingsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/settings',
-  component: lazyRouteComponent(() => import('./routes/settings/index.tsx'), 'SettingsPage'),
+  component: lazyPage(() => import('@/pages/Settings'), 'SettingsPage'),
 })
 
-// 问卷调查路由、配置模板市场路由已随 MaiBot 品牌特色系统移除
-
-// 404 路由
 const notFoundRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '*',
   component: NotFoundPage,
 })
 
-// 路由树
+function lazyPage(loader: () => Promise<{ [key: string]: unknown }>, exportName: string) {
+  // TanStack lazyRouteComponent 需要 default 导出；这里包一层显式映射
+  return createLazyComponent(loader, exportName)
+}
+
+import { lazyRouteComponent } from '@tanstack/react-router'
+
+function createLazyComponent(
+  loader: () => Promise<{ [key: string]: unknown }>,
+  exportName: string
+) {
+  return lazyRouteComponent(async () => {
+    const module = await loader()
+    return { default: module[exportName] as React.ComponentType }
+  })
+}
+
 const routeTree = rootRoute.addChildren([
   authRoute,
   setupRoute,
   chatEmbedRoute,
   protectedRoute.addChildren([
     indexRoute,
-    statisticsRoute,
-    replyEffectsRoute,
+    chatRoute,
     botConfigRoute,
     modelConfigRoute,
-    promptManagementRoute,
-    emojiManagementRoute,
-    expressionManagementRoute,
-    jargonManagementRoute,
-    behaviorLearningRoute,
-    personManagementRoute,
-    knowledgeGraphRoute,
-    knowledgeBaseRoute,
-    dataTransferRoute,
+    emojiRoute,
+    expressionRoute,
+    jargonRoute,
+    personRoute,
+    memoryRoute,
+    monitorRoute,
+    reasoningRoute,
     logsRoute,
-    reasoningProcessRoute,
-    plannerMonitorRoute,
-    chatManagementRoute,
-    chatRoute,
+    statisticsRoute,
+    dataTransferRoute,
     settingsRoute,
-  // 问卷调查路由、配置模板市场路由已随 MaiBot 品牌特色系统移除
   ]),
   notFoundRoute,
 ])
 
-type RouteNode = {
-  fullPath?: string
-  children?: RouteNode[]
-}
-
-function collectRoutePaths(node: RouteNode): string[] {
-  const currentPath = node.fullPath ? [node.fullPath] : []
-  const childPaths = node.children?.flatMap(collectRoutePaths) ?? []
-  return [...currentPath, ...childPaths]
-}
-
-export const registeredRoutePaths = new Set(collectRoutePaths(routeTree as RouteNode))
-
-// 创建路由器
 export const router = createRouter({
   routeTree,
   defaultNotFoundComponent: NotFoundPage,
@@ -294,9 +211,23 @@ export const router = createRouter({
   defaultPreloadDelay: 80,
 })
 
-// 类型声明
 declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router
   }
+}
+
+// 供守卫/登录页复用：登录成功后的落地页
+export function postAuthTarget(): string {
+  if (typeof window === 'undefined') return '/'
+  const redirect = new URLSearchParams(window.location.search).get('redirect')
+  // 仅允许站内路径，防开放重定向
+  if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) return redirect
+  return '/'
+}
+
+// 未登录访问受保护路由时，beforeLoad 依赖 checkAuth；
+// checkAuth 失败（后端不可达）时按未登录处理，由登录页给出明确错误。
+export function hasLocalToken(): boolean {
+  return getStoredToken() !== ''
 }

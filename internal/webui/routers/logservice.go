@@ -244,3 +244,9 @@ func moduleOf(rec slog.Record) string {
 	}
 	return name
 }
+
+// NewShared 构造一个尚未绑定 hub 的日志服务（宿主先拿去当 slog handler，
+// Server 装配时经 webui.Options.Logs 注入并 SetHub）。
+func NewShared(capacity int, level *slog.LevelVar) *LogService {
+	return NewLogService(capacity, level, nil)
+}

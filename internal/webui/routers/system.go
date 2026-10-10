@@ -5,6 +5,7 @@ package routers
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"runtime"
 	"sync"
@@ -153,13 +154,19 @@ type newsSourceError struct{ msg string }
 func (e *newsSourceError) Error() string { return "资讯源错误: " + e.msg }
 
 // handleReloadConfig 对齐 POST /system/reload-config：触发配置热重载。
-// Go 版配置读取实时取自 Manager 内存快照，这里返回成功并附当前热重载代数。
+// 经 reloadNow 立即重读磁盘双配置并分发回调（与 fsnotify 热重载同一路径），
+// 返回当前热重载代数。无变化的场景也会递增代数（对齐「请求即重载」语义）。
 func handleReloadConfig(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.Config == nil {
 			fail(w, http.StatusServiceUnavailable, "配置服务未启用")
 			return
 		}
-		ok(w, map[string]any{"message": "配置热重载已请求", "reload_revision": d.Config.ReloadRevision()})
+		if err := d.Config.ReloadNow("bot", "model"); err != nil {
+			fail(w, http.StatusInternalServerError, "配置热重载失败: "+err.Error())
+			return
+		}
+		slog.Info("配置已热重载（REST 触发）", "reload_revision", d.Config.ReloadRevision())
+		ok(w, map[string]any{"message": "配置已热重载", "reload_revision": d.Config.ReloadRevision()})
 	}
 }

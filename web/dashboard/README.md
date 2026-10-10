@@ -1,63 +1,66 @@
 # oh-my-qqbot Dashboard
 
-> oh-my-qqbot 的 WebUI 前端 — 基于 React 19 + TypeScript + Vite + TanStack Router/Query + Tailwind 4
+> oh-my-qqbot 的 WebUI 前端 — 为 Go 后端（`internal/webui`）全新设计与实现。
 
-<div align="center">
+## 技术栈
 
-[![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-7.2-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.2-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+- **React 19** + **TypeScript 5.9**（strict）
+- **Vite 7** 构建；`@tanstack/react-router` 路由；`@tanstack/react-query` 数据层
+- **lucide-react** 图标
+- **零 UI 框架**：设计系统为手写 CSS（`src/index.css`），黑白灰线条风
+  （亮色 = 纸白底 + 墨黑字；暗色 = 墨黑底 + 纸白字；语义色仅 ok/warn/err 小面积使用）
+- **vitest** 单测（`npm test`）
 
-</div>
+## 目录结构
 
-## 来源与许可声明
+```
+src/
+├── api/          # 后端 API 封装（与 internal/webui/routers 一一对应）
+│   ├── auth.ts       # 登录/密码/向导（auth.go）
+│   ├── system.ts     # 系统状态/统计/资讯（system.go, statistics.go）
+│   ├── config.ts     # bot/model 配置读写（config.go）
+│   ├── models.ts     # 模型/服务商/任务路由（model.go）
+│   ├── chat.ts       # WebUI 虚拟平台聊天（chat.go）
+│   ├── resources.ts  # 人物/表达/黑话/表情（resources.go）
+│   └── misc.ts       # 日志/记忆/MCP/数据传输/推理快照
+├── lib/          # 基础设施
+│   ├── http.ts       # fetch 客户端（Bearer + 401 处理 + success 包络校验）
+│   ├── token.ts      # token 存取 + 401 广播
+│   ├── ws.ts         # 统一 WebSocket（自动重连 + 订阅恢复）
+│   ├── format.ts     # 纯函数格式化（时间/字节/数字）
+│   ├── theme.ts      # 亮/暗/跟随系统主题
+│   └── toast.ts      # 通知 store
+├── components/   # Layout（侧栏+顶栏）、ui.tsx（Modal/Menu/字段组件等原语）、ErrorBoundary
+├── pages/        # 每个路由一个文件（与 router.tsx 一一对应）
+└── index.css     # 设计系统（token + 组件类）
+```
 
-本项目 **fork 自 [MaiBot](https://github.com/MaiM-with-u/MaiBot) 的 `dashboard/` 前端**
-（原项目 v1.8.4），并做了如下改造以对接 oh-my-qqbot 的 Go 后端（`internal/webui`）：
+## 设计原则
 
-- **鉴权方式**：HttpOnly Cookie → `Authorization: Bearer` 请求头 + `/api/webui/ws-token`
-  换取 WS 握手临时 token；
-- **API 前缀**：统一对齐 Go 后端 `/api/webui` 路由清单（`internal/webui/routers/registry.go`），
-  字段差异逐个适配；
-- **移除插件系统**：插件市场/插件配置/插件镜像/插件 WebUI 扩展页与相关 API 客户端全部删除；
-- **移除 Electron 打包分支**：electron/ 目录、electron-vite 配置、主进程桥接代码；
-- **视觉重写**：设计语言改为「主黑白灰、辅红、线条风」——移除 MaiBot 的主题系统
-  （未来复古/千禧风格、背景图层、新手引导、问卷调查），重写设计 token、登录页与布局框架；
-- **i18n**：zh-CN 为主（fallback zh），保留 en，文案去 MaiBot 品牌化。
-
-原项目代码采用 **GNU Affero General Public License v3（AGPLv3）** 授权，
-本目录保留其 [`LICENSE`](./LICENSE) 文件与全部版权声明；
-按 AGPLv3 要求，本衍生作品同样以 AGPLv3 授权分发。
+1. **只调后端真实存在的 API** — 前端不臆造端点；每个 api/*.ts 文件头部标注对齐的 Go 路由文件。
+2. **简约至上** — 无 UI 框架、无动画库、无图表库（图表用纯 div 条形图）；层次靠 1px 边框与留白。
+3. **黑白灰线条风** — 禁止彩色装饰、渐变、玻璃拟态、大阴影；语义色仅状态点/徽章/提示条。
+4. **中文注释**，文案直接中文（无 i18n 层）。
 
 ## 开发
 
 ```bash
-npm install        # 安装依赖
-npm run dev        # 开发服务器（127.0.0.1:7999，/api 代理到 http://127.0.0.1:8001）
-npm run build      # 类型检查 + 生产构建（tsc -b && vite build）
-npm run typecheck  # 仅类型检查
+npm install
+npm run dev        # http://127.0.0.1:7999（代理 /api → 127.0.0.1:8001）
+npm test           # vitest 单测
+npm run typecheck  # tsc 双工程检查
+npm run lint       # eslint
+npm run build      # 产出 dist/，由 Go 后端静态托管
 ```
 
-生产构建产物输出到 `dist/`，由 Go 后端（`internal/webui` 的静态托管 + SPA fallback）
-直接服务；`node_modules/` 与 `dist/` 不入库（根 `.gitignore` 已配置）。
+## 与后端的鉴权约定
 
-## 功能模块（保留页面）
+- 登录 = `POST /api/webui/auth/verify`（body `{token}`，默认密码 `admin123`），
+  成功后 token 存 localStorage（key `ohmyqqbot-webui-token`）；
+- 后续 REST 请求经 `Authorization: Bearer <token>` 头鉴权；401 统一清 token 跳 `/auth`；
+- WebSocket 握手经 `GET /api/webui/ws-token` 换取一次性临时 token（60s 有效）。
 
-- **首页概览** — 运行状态、存储占用、快捷操作、公告卡片
-- **聊天** — WebUI 内置聊天（虚拟平台注入）+ 嵌入式聊天
-- **聊天管理** — 会话列表浏览
-- **监控** — 运行观察（maisaka monitor / WS `maisaka_monitor` 域）
-- **资源** — 表情包 / 表达方式 / 黑话 / 行为学习 / 长期记忆（知识库 + 图谱）
-- **人物管理**
-- **日志** — 终端风格日志（WS `logs` 域实时流）、推理过程、详细统计
-- **模型配置 / 机器人配置 / Prompt 管理** — 配置中心
-- **数据传输** — 配置导出导入
-- **回复效果**（实验开关控制）
-- **登录 / 初始化向导 / 设置**
+## 许可
 
-### 已移除（本 fork 范围裁定）
-
-- 插件系统全部页面（plugin-config / plugins / plugin-mirrors / plugin-webui / 适配器管理）
-- Electron 桌面壳与后端连接管理器
-- 依赖远端插件统计服务的问卷 / 模型模板市场入口
+GPLv3（与主仓库一致）。本前端为全新实现，不再包含 MaiBot dashboard 的代码；
+设计风格参考 Buddy-2API-Go 管理后台（仅视觉思路，未复制代码）。

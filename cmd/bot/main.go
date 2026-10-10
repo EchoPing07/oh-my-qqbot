@@ -34,7 +34,13 @@ func main() {
 	if *verbose {
 		level = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	// 先建 WebUI 日志桥（环形缓冲 + WS 广播），主 logger 用 MultiHandler 同时写 stderr 与桥。
+	// LogService 实例后续经 webui.Options.Logs 注入 Server（共享同一份数据源）。
+	levelVar.Set(level)
+	logger := slog.New(slog.NewMultiHandler(
+		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: levelVar}),
+		logService,
+	))
 	slog.SetDefault(logger)
 
 	app, err := assemble.New(assemble.Options{
@@ -75,19 +81,27 @@ type webUIKernel struct{ s *webui.Server }
 func (w webUIKernel) ListenAndServe() error { return w.s.Start() }
 func (w webUIKernel) Close() error          { return nil } // Server 生命周期由 http.Server 承载
 
+// logService/levelVar 是主程序 slog 与 WebUI Server 之间共享的日志桥（main 里初始化）。
+var (
+	logService = webui.NewLogBridge(nil)
+	levelVar   = new(slog.LevelVar)
+)
+
 // newWebUI builds the WebUI server from the assembled app.
 func newWebUI(app *assemble.App) (assemble.WebUIKernel, error) {
 	cfg := app.Cfg.GetGlobalConfig()
 	server, err := webui.NewServer(webui.Options{
-		ConfigDir: app.ConfigDir(),
-		DataDir:   app.DataDir(),
-		DistDir:   "web/dashboard/dist",
-		Hosts:     cfg.WebUI.Host,
-		Port:      cfg.WebUI.Port,
-		Version:   internal.Version,
-		Memory:    app.Kernel,
-		DB:        app.DB,
-		Bus:       app.Bus,
+		ConfigDir:   app.ConfigDir(),
+		DataDir:     app.DataDir(),
+		DistDir:     "web/dashboard/dist",
+		Hosts:       cfg.WebUI.Host,
+		Port:        cfg.WebUI.Port,
+		Version:     internal.Version,
+		Memory:      app.Kernel,
+		DB:          app.DB,
+		Bus:         app.Bus,
+		Logs:        logService,
+		LogLevelVar: levelVar,
 	})
 	if err != nil {
 		return nil, err

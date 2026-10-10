@@ -9,3 +9,7 @@ data/
 web/dashboard/node_modules/
 web/dashboard/dist/
 dist/
+
+# playwright-cli 调试产物
+.playwright-cli/
+bin/

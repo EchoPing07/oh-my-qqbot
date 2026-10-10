@@ -124,6 +124,12 @@ func (m *Manager) ReloadRevision() int {
 	return m.reloadRev
 }
 
+// ReloadNow 立即重载双配置并分发回调（供 WebUI /system/reload-config 与热重载共用）。
+// scopes 为 "bot"/"model" 子集；空/全量时重载双文件。
+func (m *Manager) ReloadNow(scopes ...string) error {
+	return m.reloadNow(scopes)
+}
+
 // ---------------------------------------------------------------------------
 // 加载与缺省合成
 // ---------------------------------------------------------------------------
