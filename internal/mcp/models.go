@@ -101,16 +101,6 @@ func metaToMap(meta mcp.Meta) map[string]any {
 	return dump
 }
 
-func annotationsMeta(annotations *mcp.Annotations) map[string]any {
-	if annotations == nil {
-		return map[string]any{}
-	}
-	metadata := map[string]any{}
-	if annotations.LastModified != "" {
-		metadata["lastModified"] = annotations.LastModified
-	}
-	return metadata
-}
 
 // BuildToolIcon mirrors build_tool_icon。
 func BuildToolIcon(raw mcp.Icon) ToolIcon {

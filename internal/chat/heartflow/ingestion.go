@@ -1,7 +1,6 @@
 package heartflow
 
 import (
-	"sync"
 	"time"
 
 	chatcontext "oh-my-qqbot/internal/chat/context"
@@ -54,7 +53,6 @@ type IngestionStats struct {
 type MessageIngestor struct {
 	runtime *chatruntime.Runtime
 	options RegisterMessageOptions
-	mu      sync.Mutex
 }
 
 // NewMessageIngestor builds the ingestion wrapper.

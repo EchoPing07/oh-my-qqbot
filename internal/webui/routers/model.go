@@ -30,12 +30,7 @@ func handleModelsList(d *Deps) http.HandlerFunc {
 			return
 		}
 		mc := d.Config.GetModelConfig()
-		taskUsers := map[string][]string{}
-		for task, tc := range mc.ModelTaskConfig.TaskConfigs() {
-			for _, name := range tc.ModelList {
-				taskUsers[name] = append(taskUsers[name], task)
-			}
-		}
+		taskUsers := taskUsersByModel(mc)
 		baseURLByProvider := map[string]string{}
 		for _, p := range mc.APIProviders {
 			baseURLByProvider[p.Name] = p.BaseURL

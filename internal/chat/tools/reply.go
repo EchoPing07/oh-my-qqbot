@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -238,9 +237,6 @@ func HandleReplyTool(ctx context.Context, deps *ReplyDependencies, invocation To
 
 	targetMessageID := strings.TrimSpace(toString(rawArguments["msg_id"]))
 	setQuote := toBool(rawArguments["set_quote"], true)
-
-	attachAtPresent := rawArguments["attach_at"] != nil && !isEmptyList(rawArguments["attach_at"])
-	_ = attachAtPresent
 
 	if targetMessageID == "" {
 		return BuildFailureResult(toolName, "reply 工具需要提供有效的 `msg_id` 参数。", nil, nil)
@@ -522,20 +518,6 @@ func toBool(value any, fallback bool) bool {
 	}
 }
 
-func isEmptyList(value any) bool {
-	switch v := value.(type) {
-	case []any:
-		return len(v) == 0
-	case []string:
-		return len(v) == 0
-	case string:
-		return strings.TrimSpace(v) == ""
-	case nil:
-		return true
-	}
-	return false
-}
-
 func segmentTexts(segments []OutboundSegment) []string {
 	texts := make([]string, 0, len(segments))
 	for _, segment := range segments {
@@ -544,14 +526,6 @@ func segmentTexts(segments []OutboundSegment) []string {
 	return texts
 }
 
-// argsToJSON is a debugging helper mirroring json.dumps of tool args.
-func argsToJSON(args map[string]any) string {
-	encoded, err := json.Marshal(args)
-	if err != nil {
-		return "{}"
-	}
-	return string(encoded)
-}
 
 // 编译期对齐检查：ReplyDependencies 的 Runtime 必须同时满足历史追加面。
 var _ interface {

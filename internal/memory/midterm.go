@@ -83,16 +83,9 @@ type MidTermSummarizer struct {
 	BotNickname string
 	// IngestToKernel=false 时跳过内核写入（测试/审计）。
 	IngestToKernel bool
-	Now            func() time.Time
 	Logf           func(format string, args ...any)
 }
 
-func (s *MidTermSummarizer) now() time.Time {
-	if s.Now != nil {
-		return s.Now()
-	}
-	return time.Now()
-}
 
 func (s *MidTermSummarizer) log(format string, args ...any) {
 	if s.Logf != nil {

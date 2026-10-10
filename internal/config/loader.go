@@ -23,26 +23,15 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-// innerTable 对齐配置文件中的 [inner] 表（version 字段）。
-type innerTable struct {
-	Version string `toml:"version"`
-}
-
-// configFile 是配置文件磁盘形态：[inner] + 各配置节。
-type configFile struct {
-	Inner innerTable `toml:"inner"`
-}
-
 // Manager 对齐 config.ConfigManager。
 type Manager struct {
 	botConfigPath   string
 	modelConfigPath string
 
-	mu          sync.RWMutex
-	global      *Config
-	model       *ModelConfig
-	reloadRev   int
-	fingerprints map[string]string
+	mu        sync.RWMutex
+	global    *Config
+	model     *ModelConfig
+	reloadRev int
 
 	cbMu       sync.Mutex
 	callbacks  []*reloadCallbackRegistration
@@ -71,7 +60,6 @@ func NewManager(configDir string) *Manager {
 	return &Manager{
 		botConfigPath:   filepath.Join(configDir, "bot_config.toml"),
 		modelConfigPath: filepath.Join(configDir, "model_config.toml"),
-		fingerprints:    map[string]string{},
 	}
 }
 
@@ -92,7 +80,6 @@ func (m *Manager) Initialize() error {
 	m.mu.Lock()
 	m.global = global
 	m.model = model
-	m.updateFingerprintsLocked()
 	m.mu.Unlock()
 	return nil
 }
@@ -335,7 +322,6 @@ func (m *Manager) SaveBotConfig(cfg *Config) error {
 	}
 	m.mu.Lock()
 	m.global = cfg
-	m.updateFingerprintsLocked()
 	m.mu.Unlock()
 	return nil
 }
@@ -351,18 +337,8 @@ func (m *Manager) SaveModelConfig(cfg *ModelConfig) error {
 	}
 	m.mu.Lock()
 	m.model = cfg
-	m.updateFingerprintsLocked()
 	m.mu.Unlock()
 	return nil
-}
-
-// updateFingerprintsLocked 记录配置文件指纹（对齐 _update_config_file_fingerprints）。
-func (m *Manager) updateFingerprintsLocked() {
-	for name, path := range map[string]string{"bot": m.botConfigPath, "model": m.modelConfigPath} {
-		if data, err := os.ReadFile(path); err == nil {
-			m.fingerprints[name] = fmt.Sprintf("%x", len(data)) // 简化指纹：长度+版本代数
-		}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -475,7 +451,6 @@ func (m *Manager) reloadNow(changedScopes []string) error {
 		m.model = newModel
 	}
 	m.reloadRev++
-	m.updateFingerprintsLocked()
 	m.mu.Unlock()
 
 	// 分发回调（对齐 _is_registration_interested 的命中规则）。
@@ -588,6 +563,11 @@ func tomlValueEqual(a, b any) bool {
 
 // StartWatching 启动 fsnotify 热重载（对齐 ConfigManager 的 FileWatcher 接线）。
 // 带最小重载间隔（1s，对齐 _hot_reload_min_interval_s）防抖。
+//
+// watch 的是配置目录而非单个文件（B3）：Linux 下 tmp+rename 原子写会让
+// 逐文件 watch 指向旧 inode，热重载静默失效；watch 目录 + 按事件文件名
+// 过滤（scopeForPath）可覆盖 rename 形态的保存。目录不存在时回退为
+// 逐文件 watch（兜底，行为同旧实现）。
 func (m *Manager) StartWatching() error {
 	m.watchMu.Lock()
 	defer m.watchMu.Unlock()
@@ -598,10 +578,13 @@ func (m *Manager) StartWatching() error {
 	if err != nil {
 		return err
 	}
-	for _, p := range []string{m.botConfigPath, m.modelConfigPath} {
-		if err := w.Add(p); err != nil {
-			w.Close()
-			return fmt.Errorf("监听配置文件失败: %w", err)
+	if err := w.Add(filepath.Dir(m.botConfigPath)); err != nil {
+		// 回退：目录不存在等场景逐文件监听。
+		for _, p := range []string{m.botConfigPath, m.modelConfigPath} {
+			if err := w.Add(p); err != nil {
+				w.Close()
+				return fmt.Errorf("监听配置目录/文件失败: %w", err)
+			}
 		}
 	}
 	m.watcher = w
@@ -639,7 +622,9 @@ func (m *Manager) watchLoop() {
 			if !ok {
 				return
 			}
-			// 编辑器保存常是 rename/create；对齐 FileWatcher：任何写事件都触发。
+			// 目录 watch 下 event.Name 是具体变更文件；编辑器保存常是
+			// rename/create（tmp+rename 原子写）。任何写事件 + 文件名命中
+			// 才触发（scopeForPath 过滤目录内其他文件与 .tmp 中间产物）。
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
 				continue
 			}

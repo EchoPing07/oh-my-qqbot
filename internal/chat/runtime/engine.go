@@ -68,7 +68,6 @@ type Engine struct {
 	activeLogicalTurnID  string
 	cycleCounter         int
 
-	stopCh  chan struct{}
 	running bool
 
 	// 引擎作用域执行上下文（T5 修复）：RunLoop 启动时创建，stop 关闭或循环
@@ -93,12 +92,6 @@ func (e *Engine) ActiveLogicalTurnID() string { return e.activeLogicalTurnID }
 
 // CycleCounter returns the started-cycle count.
 func (e *Engine) CycleCounter() int { return e.cycleCounter }
-
-func (e *Engine) ensureRunning() {
-	// Mirrors `_ensure_background_tasks_running` for the engine loop: the actual
-	// supervision lives in Runtime.Start; nothing to do when the supervisor is
-	// already running.
-}
 
 // RunLoop mirrors MaisakaReasoningEngine.run_loop. It consumes triggers until
 // the runtime stops or `stop` is closed.
@@ -845,12 +838,6 @@ func plannerContentOf(response *PlannerResponse) string {
 	return response.Content
 }
 
-func toolCallsOrNil(response *PlannerResponse) []PlannerToolCall {
-	if response == nil {
-		return nil
-	}
-	return response.ToolCalls
-}
 
 // assistantOutputItems mirrors the portable assistant item built for an
 // interrupted request (`ChatResponse(output_items=(...))`).

@@ -550,12 +550,6 @@ func (m *manager) serverCount() int {
 	return len(m.connections)
 }
 
-// toolCount mirrors MCPManager.tool_count。
-func (m *manager) toolCount() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.toolToServer)
-}
 
 // close mirrors MCPManager.close: 关闭全部连接并清空路由表。
 func (m *manager) close() error {

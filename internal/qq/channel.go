@@ -38,8 +38,6 @@ const (
 	reconnectBase = time.Second
 	// reconnectMax 是重连退避的上限。
 	reconnectMax = 30 * time.Second
-	// readyTimeout 是等待 READY / RESUMED 的超时。
-	readyTimeout = 15 * time.Second
 	// readLimit 是单帧读取上限。
 	readLimit = 4 << 20
 	// heartbeatFailLimit 是连续心跳无 ACK / 写失败的容忍次数, 超过即主动断开重连

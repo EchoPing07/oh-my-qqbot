@@ -306,7 +306,6 @@ var (
 	pythonTrueRE    = regexp.MustCompile(`\bTrue\b`)
 	pythonFalseRE   = regexp.MustCompile(`\bFalse\b`)
 	pythonNoneRE    = regexp.MustCompile(`\bNone\b`)
-	bareKeyRE       = regexp.MustCompile(`([{,]\s*)([A-Za-z_\x{4e00}-\x{9fff}][A-Za-z0-9_\x{4e00}-\x{9fff}]*)(\s*:)`)
 	trailingCommaRE = regexp.MustCompile(`,\s*([}\]])`)
 )
 

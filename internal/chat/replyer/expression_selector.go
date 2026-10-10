@@ -21,9 +21,6 @@ import (
 // MaxSelectedExpressions mirrors MAX_SELECTED_EXPRESSIONS.
 const MaxSelectedExpressions = 5
 
-// maxSelectedExpressions is the internal alias used by the generator.
-const maxSelectedExpressions = MaxSelectedExpressions
-
 // vectorClusterPoolSize mirrors _VECTOR_CLUSTER_POOL_SIZE.
 const vectorClusterPoolSize = 16
 
@@ -175,31 +172,6 @@ func BuildExpressionHabitsBlock(selectedExpressions []ExpressionCandidate) strin
 	return "【表达习惯参考，请视情况自然的使用】\n" + strings.Join(lines, "\n")
 }
 
-// normalizeHistoryLine mirrors _normalize_history_line.
-func normalizeHistoryLine(entry chatcontext.LLMContextMessage) string {
-	content := strings.Join(strings.Fields(entry.ProcessedPlainText()), " ")
-	if len([]rune(content)) > 120 {
-		content = string([]rune(content)[:120]) + "..."
-	}
-	timestamp := entry.Timestamp().Format("15:04:05")
-	return fmt.Sprintf("- %s %s: %s", timestamp, entry.Role(), content)
-}
-
-// buildChatInfo mirrors _build_chat_info（最近 10 条真实聊天）。
-func buildChatInfo(chatHistory []chatcontext.LLMContextMessage) string {
-	start := len(chatHistory) - 10
-	if start < 0 {
-		start = 0
-	}
-	var historyLines []string
-	for _, entry := range chatHistory[start:] {
-		if strings.TrimSpace(entry.ProcessedPlainText()) == "" {
-			continue
-		}
-		historyLines = append(historyLines, normalizeHistoryLine(entry))
-	}
-	return strings.Join(historyLines, "\n")
-}
 
 // formatExpressionIntent mirrors _format_expression_intent.
 func formatExpressionIntent(replyToolArgs map[string]any) string {

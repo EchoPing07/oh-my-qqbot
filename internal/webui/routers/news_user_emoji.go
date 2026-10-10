@@ -1,25 +1,13 @@
-// news / user_emoji 路由 — 简化实现。
+// user_emoji 路由 — 本地用户表情包管理（简化面：列出/删除/内容回源）。
+// news 路由无前端消费方，已随轻量化原则移除。
 package routers
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
-// ---------------------------------------------------------------------------
-// news — 对齐 routers/news.py（GET /news 直接复用资讯代理）
-// ---------------------------------------------------------------------------
-
-// handleNews 对齐 GET /news（与 /system/news 同源；保留独立路径对齐 Python 形态）。
-func handleNews(d *Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		handleSystemNews(d)(w, r)
-	}
-}
 
 // ---------------------------------------------------------------------------
 // user_emojis — 对齐 routers/user_emoji.py（本地用户表情包管理，简化面：
@@ -143,15 +131,6 @@ func handleUserEmojiDelete(d *Deps) http.HandlerFunc {
 		ok(w, map[string]any{"message": "表情已删除", "id": emojiID})
 	}
 }
-
-// newUserEmojiID 生成 32 位十六进制 ID（对齐 uuid4().hex 形态；上传接口启用时使用）。
-func newUserEmojiID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
-}
-
-var _ = newUserEmojiID // 预留：POST /user-emojis 上传路径使用
 
 // sanitizeUserID 白名单化 ID（十六进制/短横线），阻断路径穿越。
 func sanitizeUserID(raw string) string {

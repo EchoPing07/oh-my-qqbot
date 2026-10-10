@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -109,7 +110,10 @@ func (db *DB) QueryMessagesBySession(sessionID string, limit int) ([]*Message, e
 	for rows.Next() {
 		m, err := scanMessage(rows)
 		if err != nil {
-			return nil, err
+			// 逐行容错（B2）：单行坏记录（如历史脏数据/格式演化的旧时间戳）
+			// 只 Warn 跳过，不让一行毁掉整段会话历史。
+			slog.Warn("会话消息行解析失败，已跳过", "session_id", sessionID, "err", err)
+			continue
 		}
 		out = append(out, m)
 	}

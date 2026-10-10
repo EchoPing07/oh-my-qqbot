@@ -105,6 +105,17 @@ type App struct {
 	// stopMu 保护 stopChans 的 append（消息管线 goroutine）与 Close 的遍历
 	// close（退出路径）之间的并发访问。
 	stopMu sync.Mutex
+
+	// 渠道生命周期（凭据热重载重建渠道用）。channelMu 保护以下字段。
+	channelMu        sync.Mutex
+	channelCancel    context.CancelFunc // 当前渠道 ctx 的取消函数（重建时取消旧连接）
+	channelParentCtx context.Context    // 渠道所属的应用级 ctx（Run 传入）
+	channelAppID     string             // 当前渠道生效的凭据（检测热重载变更）
+	channelAppSecret string
+	channelStarted   bool
+
+	// banRegexCache 是 ban_msgs_regex 的正则编译缓存（pattern → *regexp.Regexp）。
+	banRegexCache sync.Map
 }
 
 // New assembles the application skeleton without starting background work.
@@ -197,6 +208,8 @@ func (a *App) SetupPhase1() error {
 				a.log.Info("模型配置已热重载")
 			}
 		}
+		// 凭据（bot.app_id/app_secret）热重载变更时重建 QQ 渠道连接。
+		a.restartChannelOnCredentialReload()
 	})
 	return nil
 }
@@ -348,8 +361,11 @@ func (a *App) Close(ctx context.Context) {
 	}
 	a.stopChans = nil
 	a.stopMu.Unlock()
-	if a.Channel != nil {
-		_ = a.Channel.Close()
+	a.channelMu.Lock()
+	ch := a.Channel
+	a.channelMu.Unlock()
+	if ch != nil {
+		_ = ch.Close()
 	}
 	a.LLM.WaitForUsage()
 	for i := len(a.shutdown) - 1; i >= 0; i-- {
@@ -361,11 +377,23 @@ func (a *App) Close(ctx context.Context) {
 }
 
 // startChannel wires the QQ official gateway into the message pipeline.
+// 渠道 ctx 从应用 ctx 派生并记录取消函数：凭据热重载变更时由
+// restartChannel 取消旧连接并用新凭据重建（B8）。
 func (a *App) startChannel(ctx context.Context) error {
 	global := a.Cfg.GetGlobalConfig()
 	botNames := append([]string{global.Bot.Nickname}, global.Bot.AliasNames...)
 	appID, appSecret := a.resolveChannelCredentials()
-	a.Channel = qq.NewChannel(qq.Options{
+
+	channelCtx, cancel := context.WithCancel(ctx)
+	a.channelMu.Lock()
+	a.channelParentCtx = ctx
+	a.channelCancel = cancel
+	a.channelAppID = appID
+	a.channelAppSecret = appSecret
+	a.channelStarted = true
+	a.channelMu.Unlock()
+
+	ch := qq.NewChannel(qq.Options{
 		AppID:     appID,
 		AppSecret: appSecret,
 		Sandbox:   a.opts.Sandbox,
@@ -374,6 +402,9 @@ func (a *App) startChannel(ctx context.Context) error {
 		Quota:     &qq.ProactiveOptions{GroupPerMinute: 20, GroupPerDay: 1000},
 		Logger:    a.log,
 	})
+	a.channelMu.Lock()
+	a.Channel = ch
+	a.channelMu.Unlock()
 	// 防御纵深：渠道回调里的任何 panic 都不允许击穿 goroutine 使进程退出
 	//（recover 后记录 panic 值与栈，返回 nil 表示消息已被消费）。
 	handler := func(ctx context.Context, msg *message.SessionMessage) (err error) {
@@ -390,12 +421,57 @@ func (a *App) startChannel(ctx context.Context) error {
 		}()
 		return a.handleMessage(ctx, msg)
 	}
+	// 捕获局部变量 ch：重建渠道时会替换 a.Channel，旧 goroutine 必须继续
+	// 使用自己的实例（避免读写竞争）。
 	go func() {
-		if err := a.Channel.Connect(ctx, handler); err != nil && !errors.Is(err, context.Canceled) {
+		err := ch.Connect(channelCtx, handler)
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		if errors.Is(err, qq.ErrNotConfigured) {
+			// 凭据缺失不是终态：WebUI 填写凭据触发热重载后由
+			// restartChannelOnCredentialReload 重建渠道。
+			a.log.Warn("QQ 渠道缺少凭据（app_id/app_secret），暂不连接；配置凭据后热重载将自动重连")
+			return
+		}
+		if err != nil {
 			a.log.Error("QQ 网关退出", "err", err)
 		}
 	}()
 	return nil
+}
+
+// restartChannelOnCredentialReload 在 bot 凭据（app_id/app_secret）热重载变更
+// 后重建 QQ 渠道连接。此前 reload 回调只处理 model 作用域，渠道从不重建，
+// WebUI「凭据热重载生效」的文案是虚假承诺（review P1-2）。
+func (a *App) restartChannelOnCredentialReload() {
+	appID, appSecret := a.resolveChannelCredentials()
+	a.channelMu.Lock()
+	started := a.channelStarted
+	changed := appID != a.channelAppID || appSecret != a.channelAppSecret
+	parent := a.channelParentCtx
+	a.channelMu.Unlock()
+	// 渠道尚未启动（headless / 未进入 Run）时交给 Run 的常规启动路径。
+	if !started || !changed || parent == nil {
+		return
+	}
+	a.log.Info("检测到机器人凭据变更，重建 QQ 渠道连接")
+	a.restartChannel(parent)
+}
+
+// restartChannel 取消旧渠道 ctx 并用当前配置重建（旧连接随 ctx 取消自行退出，
+// 退出时会自行关闭底层连接）。
+func (a *App) restartChannel(ctx context.Context) {
+	a.channelMu.Lock()
+	cancel := a.channelCancel
+	a.channelMu.Unlock()
+	if cancel != nil {
+		cancel()
+		// 旧 Connect goroutine 异步退出，不等待：直接用新凭据重建。
+	}
+	if err := a.startChannel(ctx); err != nil {
+		a.log.Warn("QQ 渠道重建失败", "err", err)
+	}
 }
 
 // resolveChannelCredentials resolves the QQ bot credentials (AppID, AppSecret).
@@ -417,15 +493,29 @@ func (a *App) resolveChannelCredentials() (string, string) {
 }
 
 // handleMessage is the message pipeline body of the QQ channel handler
-// (extracted for testability): 入库 → 会话登记 → 会话确保存在 → 心流投递。
-// 顺序对齐 bot.py: register_message → get_or_create_session → 心流。
-func (a *App) handleMessage(_ context.Context, msg *message.SessionMessage) error {
+// (extracted for testability): ban 过滤 → 入库 → 会话登记 → 会话确保存在 →
+// 心流投递。顺序对齐 bot.py: ban 检查（登记前）→ register_message →
+// get_or_create_session → 心流。
+// 注：入库/会话/心流各步骤的方法集不接 ctx（签名保持不动），ctx 在管线
+// 入口用于取消检查（关停中不再写库）。
+func (a *App) handleMessage(ctx context.Context, msg *message.SessionMessage) error {
 	if msg == nil {
 		return nil
+	}
+	// ctx 已取消（进程关停中）时放弃后续处理，避免退出路径上的无效写库。
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	global := a.Cfg.GetGlobalConfig()
 	// 自发消息过滤（渠道层已过滤，这里再兜底一次机器人身份）。
 	if msg.MessageInfo.UserInfo.UserID == global.Bot.QQAccount {
+		return nil
+	}
+	// ban 过滤（对齐 bot.py receive_message：登记前对纯文本做过滤词/正则
+	// 检查，命中即丢弃；群聊与私聊都生效，只查纯文本不影响富媒体组件）。
+	if hit := a.messageBanned(messagePlainText(msg)); hit != "" {
+		a.log.Debug("消息命中过滤规则，已丢弃",
+			"message_id", msg.MessageID, "session", msg.SessionID, "hit", hit)
 		return nil
 	}
 	// 入库（对齐 MessageUtils.store_message_to_db）。

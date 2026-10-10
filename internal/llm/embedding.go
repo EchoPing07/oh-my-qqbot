@@ -26,13 +26,6 @@ type EmbeddingOptions struct {
 	EncodingFormat string
 }
 
-type embeddingsRequest struct {
-	Model          string `json:"model"`
-	Input          any    `json:"input"`
-	Dimensions     int    `json:"dimensions,omitempty"`
-	EncodingFormat string `json:"encoding_format,omitempty"`
-}
-
 type embeddingsResponse struct {
 	Data []struct {
 		Index     int       `json:"index"`

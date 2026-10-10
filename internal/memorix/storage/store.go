@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 
 	"oh-my-qqbot/internal/memorix/retrieval"
@@ -437,9 +436,6 @@ func (s *Store) HasFTS(ctx context.Context) bool {
 // ---------------------------------------------------------------------------
 // 哈希工具（对齐 core/utils/hash.py）
 // ---------------------------------------------------------------------------
-
-// UUID 生成（对齐 Python 用 uuid4 作为 episode/fact 主键）。
-func newID() string { return uuid.NewString() }
 
 // quantile 是数值裁剪工具（保留向量归一化的数值稳定）。
 func safeNormalize(vec []float32) ([]float32, float64) {

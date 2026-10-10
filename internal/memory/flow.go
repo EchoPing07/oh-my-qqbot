@@ -1571,8 +1571,6 @@ type ImageMemoryWritebackService struct {
 	// image_manager.get_cached_image_description）。
 	Descriptions func(imageHash string) string
 	Journal      *ImageWritebackJournal
-	// Now 注入时间（测试用）。
-	Now func() time.Time
 	// PollInterval mirrors image_memory.job_poll_interval_seconds（默认 2s）。
 	PollInterval time.Duration
 
@@ -1602,12 +1600,6 @@ func (s *ImageMemoryWritebackService) log(format string, args ...any) {
 	}
 }
 
-func (s *ImageMemoryWritebackService) now() time.Time {
-	if s.Now != nil {
-		return s.Now()
-	}
-	return time.Now()
-}
 
 // Start mirrors `ImageMemoryWritebackService.start`（幂等；未启用时不启动）。
 func (s *ImageMemoryWritebackService) Start(ctx context.Context) {

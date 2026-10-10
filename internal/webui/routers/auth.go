@@ -4,7 +4,6 @@ package routers
 import (
 	"fmt"
 	"net/http"
-	"time"
 )
 
 // handleAuthVerify 对齐 POST /api/webui/auth/verify：验证 token（成功即认为
@@ -107,6 +106,18 @@ func handleAuthRegenerate(d *Deps) http.HandlerFunc {
 func handleSetupStatus(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authenticated := d.Auth != nil && d.Auth.VerifyToken(bearerToken(r))
+		// 防御（B6）：同文件其他 handler 均有 Auth==nil 检查，这里补齐——
+		// 直接构造 Deps 的测试/嵌入式场景下按「全新安装」形态返回。
+		if d.Auth == nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"is_first_setup":        true,
+				"token_source":          "temporary",
+				"requires_custom_token": true,
+				"authenticated":         false,
+				"message":               "状态查询成功",
+			})
+			return
+		}
 		source := d.Auth.TokenSource()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"is_first_setup":        d.Auth.IsFirstSetup(),
@@ -202,6 +213,3 @@ func trimSpace(s string) string {
 	}
 	return s[start:end]
 }
-
-// unixNow 返回当前 unix 秒（监控/统计响应时间戳用）。
-func unixNow() float64 { return float64(time.Now().UnixNano()) / 1e9 }

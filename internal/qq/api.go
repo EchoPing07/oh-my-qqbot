@@ -202,12 +202,6 @@ type APIOptions struct {
 	Logger func(format string, args ...any)
 }
 
-func (o APIOptions) now() time.Time {
-	if o.Now != nil {
-		return o.Now()
-	}
-	return time.Now()
-}
 
 // APIClient 是 QQ 官方 REST 客户端: 只负责发送与鉴权, 不感知业务语义。
 // 用 NewAPIClient 创建。

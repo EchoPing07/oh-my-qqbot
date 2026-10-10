@@ -4,7 +4,7 @@
 // 依赖边界：
 //   - 本包不 import internal/webui（避免环）；对宿主能力的依赖全部以本包内
 //     定义的小接口表达（AuthAPI/Broadcaster/MemoryAPI/StatusProvider/
-//     ChatInjector/SnapshotSource），由 internal/webui 装配层注入；
+//     SnapshotSource），由 internal/webui 装配层注入；
 //   - 配置走 internal/config.Manager，数据库走 internal/database.DB；
 //   - 不 import internal/mcp（并行开发中，MCP 状态经 StatusProvider 接口）；
 //   - 不 import internal/qq。
@@ -12,7 +12,6 @@ package routers
 
 import (
 	"context"
-	"net/http"
 	"sync"
 	"time"
 
@@ -20,9 +19,6 @@ import (
 	config "oh-my-qqbot/internal/config"
 	database "oh-my-qqbot/internal/database"
 )
-
-// WebUIChatPlatform 对齐 WEBUI_CHAT_PLATFORM：WebUI 内置聊天虚拟平台名。
-const WebUIChatPlatform = "webui"
 
 // AuthAPI 是 WebUI 鉴权边界（由 internal/webui.TokenManager 实现，方法集对齐
 // 参考/MaiBot/src/webui/core/security.py 的 TokenManager）。
@@ -68,23 +64,6 @@ type StatusProvider interface {
 	StatusSnapshot() map[string]any
 }
 
-// ChatInjector 把 WebUI 虚拟平台（WebUIChatPlatform）发言注入聊天主链路。
-// 由装配层实现：构造 SessionMessage → ChatManager.RegisterMessage →
-// StoreMessageToDB → 心流 runtime.RegisterMessage。
-type ChatInjector interface {
-	InjectWebUIMessage(msg WebUIChatMessage) error
-}
-
-// WebUIChatMessage 是 WebUI 聊天页发送的一条用户发言。
-type WebUIChatMessage struct {
-	SessionID string `json:"session_id,omitempty"` // 指定已有会话时直接投递
-	UserID    string `json:"user_id,omitempty"`
-	UserName  string `json:"user_name"`
-	GroupID   string `json:"group_id,omitempty"`
-	GroupName string `json:"group_name,omitempty"`
-	Content   string `json:"content"`
-}
-
 // SnapshotSource 是 Planner 快照历史来源（由 internal/webui.MonitorBridge 实现，
 // 缓存事件 bus 最近 N 条 planner.progress 事件）。
 type SnapshotSource interface {
@@ -120,8 +99,6 @@ type Deps struct {
 	Memory MemoryAPI
 	// MCP MCP 状态提供者（nil 时 /mcp/status 返回 disabled 快照）。
 	MCP StatusProvider
-	// Chat WebUI 虚拟平台注入器（nil 时 /chat/send 501）。
-	Chat ChatInjector
 	// Snapshots Planner 快照缓存（nil 时快照路由返回空列表）。
 	Snapshots SnapshotSource
 
@@ -131,10 +108,6 @@ type Deps struct {
 	StartedAt time.Time
 	// DataDir 数据目录（webui.json / 用户表情包根目录）。
 	DataDir string
-	// NewsURL 首页资讯上游 URL（空值取环境变量或默认源）。
-	NewsURL string
-	// HTTPClient 资讯代理等出站请求客户端（nil 时用默认 8s 超时客户端）。
-	HTTPClient *http.Client
 
 	// loginRateMu / loginRate 是登录限速器的懒初始化字段（S1：Deps 可能被
 	// 直接构造，如测试；首次经 LoginRateLimiter() 访问时创建）。

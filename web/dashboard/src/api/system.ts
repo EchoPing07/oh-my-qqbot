@@ -82,17 +82,3 @@ export async function getStatsDaily(days = 7): Promise<DailyStat[]> {
     cost: Number(d.total_cost) || 0,
   }))
 }
-
-export interface NewsItem {
-  id: string
-  title: string
-  content?: string
-  url?: string
-  datetime?: string
-}
-
-/** GET /news：首页资讯（后端代理 + 缓存；失败时抛 ApiError，调用方降级展示）。 */
-export async function getNews(): Promise<NewsItem[]> {
-  const data = await api.get<{ items?: NewsItem[] }>('/api/webui/news', { envelope: 'raw' })
-  return data.items ?? []
-}

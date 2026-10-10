@@ -144,25 +144,6 @@ func TestChatSessionsAndHistory(t *testing.T) {
 	env.do(t, "GET", "/api/webui/chat/history", nil, http.StatusBadRequest)
 }
 
-// WebUI 虚拟平台发言注入（ChatInjector 接线）。
-func TestChatSendInjector(t *testing.T) {
-	env := newTestEnv(t, func(d *Deps) {
-		d.Chat = &stubInjector{}
-	})
-	env.do(t, "POST", "/api/webui/chat/send",
-		map[string]any{"content": "网页消息", "user_name": "webui用户", "group_id": "g9"}, http.StatusOK)
-	// 空内容 400。
-	env.do(t, "POST", "/api/webui/chat/send",
-		map[string]any{"content": ""}, http.StatusBadRequest)
-}
-
-type stubInjector struct{ last WebUIChatMessage }
-
-func (s *stubInjector) InjectWebUIMessage(msg WebUIChatMessage) error {
-	s.last = msg
-	return nil
-}
-
 func TestStatisticsRoutes(t *testing.T) {
 	env := newTestEnv(t, nil)
 	// 灌 llm_usage。
@@ -310,20 +291,6 @@ func TestMemoryRoutesDegraded(t *testing.T) {
 	env := newTestEnv(t, nil)
 	env.do(t, "POST", "/api/webui/memory/search", map[string]any{"query": "x"}, http.StatusServiceUnavailable)
 	env.do(t, "GET", "/api/webui/memory/profiles", nil, http.StatusServiceUnavailable)
-}
-
-func TestNewsRoute(t *testing.T) {
-	env := newTestEnv(t, func(d *Deps) {
-		d.NewsURL = ""
-	})
-	// 默认源不可达（测试环境无网/拒绝），应 502 而非 panic。
-	req := httptest.NewRequest("GET", "/api/webui/news", nil)
-	req.Header.Set("Authorization", "Bearer "+env.token)
-	rec := httptest.NewRecorder()
-	env.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadGateway && rec.Code != http.StatusOK {
-		t.Fatalf("news 应 502 或 200, got %d", rec.Code)
-	}
 }
 
 // TestLogServiceRecordAttrsNotDropped 回归 P1：record 级 attrs（每次调用传的

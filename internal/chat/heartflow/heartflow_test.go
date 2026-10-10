@@ -61,7 +61,6 @@ func (c *fakeClock) advance(seconds float64) {
 type runtimeCounter struct {
 	mu      sync.Mutex
 	created []string
-	failed  []string
 }
 
 func (c *runtimeCounter) add(sessionID string) {

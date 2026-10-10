@@ -41,8 +41,6 @@ const (
 	EmojiSendNumDefault = 25
 	// EmojiMaxCandidateCount mirrors _EMOJI_MAX_CANDIDATE_COUNT = 64。
 	EmojiMaxCandidateCount = 64
-	// emojiSubAgentContextLimit mirrors _EMOJI_SUB_AGENT_CONTEXT_LIMIT = 12。
-	emojiSubAgentContextLimit = 12
 )
 
 // EmojiSuccessMessage / EmojiVLMNotConfiguredMessage mirrors send_emoji.py 常量。

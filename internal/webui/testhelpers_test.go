@@ -8,11 +8,6 @@ import (
 	"time"
 )
 
-// stringsReader 是 io.Reader 别名（测试用）。
-type stringsReader = strings.Reader
-
-func newStringsReader(s string) *strings.Reader { return strings.NewReader(s) }
-
 // logRecord 构造一条 slog.Record（module attr 模拟 slog 桥）。
 func logRecord(level, message string) slog.Record {
 	var l slog.Level

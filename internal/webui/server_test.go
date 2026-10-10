@@ -387,7 +387,7 @@ func TestCORSMiddleware(t *testing.T) {
 	}
 }
 
-// 依赖降级：Memory/MCP/Chat 未注入时的响应形态。
+// 依赖降级：Memory/MCP 未注入时的响应形态。
 func TestDegradedRoutes(t *testing.T) {
 	s := newTestServer(t, Options{})
 	h := s.Handler()
@@ -401,11 +401,6 @@ func TestDegradedRoutes(t *testing.T) {
 	out = doJSON(t, h, token, "GET", "/api/webui/mcp/status", nil, http.StatusOK)
 	if out["enabled"] != false {
 		t.Fatalf("无 MCP provider 应返回 disabled 快照")
-	}
-	out = doJSON(t, h, token, "POST", "/api/webui/chat/send",
-		map[string]any{"content": "hi", "user_name": "tester"}, http.StatusNotImplemented)
-	if out["success"] != false {
-		t.Fatalf("无 ChatInjector 应 501")
 	}
 	// chat/sessions 无 DB → 503。
 	doJSON(t, h, token, "GET", "/api/webui/chat/sessions", nil, http.StatusServiceUnavailable)

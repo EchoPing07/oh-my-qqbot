@@ -12,7 +12,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Inbox, MessageSquare, RefreshCw, Search, UserRound, Users } from 'lucide-react'
 
-import { getChatHistory, getChatPlatforms, getChatSessions, type ChatMessage, type ChatSession } from '@/api/chat'
+import { getChatHistory, getChatSessions, type ChatMessage, type ChatSession } from '@/api/chat'
 import { Banner, Empty, Loading, TextInput } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { formatDateTime, formatNumber, sessionTitle } from '@/lib/format'
@@ -55,20 +55,14 @@ export function ChatPage() {
     queryKey: ['chat-sessions', SESSION_LIMIT],
     queryFn: () => getChatSessions(SESSION_LIMIT),
   })
-  const platformsQuery = useQuery({
-    queryKey: ['chat-platforms'],
-    queryFn: getChatPlatforms,
-    staleTime: 5 * 60_000,
-  })
 
   const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data])
 
-  // 平台下拉项：后端平台清单 ∪ 实际会话里出现过的平台（避免漏筛）
+  // 平台下拉项：实际会话里出现过的平台
   const platformOptions = useMemo(() => {
-    const declared = (platformsQuery.data ?? []).map((p) => p.platform).filter(Boolean)
     const seen = sessions.map((s) => s.platform).filter(Boolean)
-    return Array.from(new Set([...declared, ...seen])).sort()
-  }, [platformsQuery.data, sessions])
+    return Array.from(new Set(seen)).sort()
+  }, [sessions])
 
   // 前端过滤：平台 + 关键字（会话标题 / 群名 / 用户 ID / 会话 ID）
   const filtered = useMemo(() => {
@@ -121,7 +115,6 @@ export function ChatPage() {
           会话列表加载失败：{sessionsQuery.error instanceof Error ? sessionsQuery.error.message : '未知错误'}
         </Banner>
       ) : null}
-      {platformsQuery.isError ? null : null}
 
       <div className="grid grid-2" style={{ gridTemplateColumns: '300px 1fr', alignItems: 'start' }}>
         {/* 左：会话列表 */}

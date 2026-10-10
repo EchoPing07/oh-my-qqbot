@@ -1,5 +1,5 @@
 /**
- * 聊天 API — 对齐 internal/webui/routers/chat.go（sessions/history/send/platforms）。
+ * 聊天 API — 对齐 internal/webui/routers/chat.go（sessions/history，只读）。
  */
 
 import { api } from '@/lib/http'
@@ -47,26 +47,4 @@ export async function getChatHistory(sessionID: string, limit = 200): Promise<Ch
     envelope: 'raw',
   })
   return data.messages ?? []
-}
-
-/** POST /chat/send：把 WebUI 聊天页发言注入虚拟平台（webui）。 */
-export async function sendChatMessage(content: string, userName: string): Promise<void> {
-  await api.post('/api/webui/chat/send', {
-    body: { content, user_name: userName },
-    errorMessage: '发送失败',
-  })
-}
-
-export interface ChatPlatform {
-  platform: string
-  name: string
-  type: string
-  enabled: boolean
-}
-
-export async function getChatPlatforms(): Promise<ChatPlatform[]> {
-  const data = await api.get<{ platforms: ChatPlatform[] }>('/api/webui/chat/platforms', {
-    envelope: 'raw',
-  })
-  return data.platforms ?? []
 }

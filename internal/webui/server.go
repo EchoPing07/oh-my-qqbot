@@ -54,14 +54,10 @@ type Options struct {
 	Version string
 	// CORS 允许的跨域来源；非空时启用 CORS（默认关闭，仅本机部署）。
 	CORS []string
-	// NewsURL 首页资讯上游 URL（空值取默认源）。
-	NewsURL string
 	// Memory 记忆内核（routers.MemoryAPI，注入后 /memory 路由可用）。
 	Memory routers.MemoryAPI
 	// MCP MCP 状态提供者（注入后 /mcp/status 返回真实快照）。
 	MCP routers.StatusProvider
-	// ChatInjector WebUI 虚拟平台发言注入器（注入后 /chat/send 可用）。
-	ChatInjector routers.ChatInjector
 	// DB 数据库句柄（nil 时会话/统计/资源路由 503）。
 	DB routersDepsDB
 	// Bus 观察事件 bus（nil 时 monitor 桥不订阅）。
@@ -135,12 +131,10 @@ func NewServer(opts Options) (*Server, error) {
 		Logs:      logs,
 		Memory:    opts.Memory,
 		MCP:       opts.MCP,
-		Chat:      opts.ChatInjector,
 		Snapshots: monitor,
 		Version:   opts.Version,
 		StartedAt: time.Now(),
 		DataDir:   opts.DataDir,
-		NewsURL:   opts.NewsURL,
 		DB:        opts.DB,
 	}
 

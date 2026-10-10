@@ -10,6 +10,7 @@ package prompt
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,13 +30,6 @@ const (
 
 // DefaultLocale 对齐 i18n.loaders.DEFAULT_LOCALE。
 const DefaultLocale = "zh-CN"
-
-// PromptMetadata 对齐 prompt_i18n.PromptMetadata（.meta.toml 内容）。
-type PromptMetadata struct {
-	DisplayName string `toml:"display_name"`
-	Advanced    bool   `toml:"advanced"`
-	Description string `toml:"description"`
-}
 
 // Manager 对齐 prompt_manager.PromptManager。
 type Manager struct {
@@ -221,12 +215,6 @@ func (m *Manager) ListPromptNames() []string {
 	return names
 }
 
-// LoadMetadata 对齐 prompt_i18n._load_prompt_metadata：读取内置 .meta.toml。
-func (m *Manager) LoadMetadata(name string) (PromptMetadata, bool) {
-	path := filepath.Join(m.promptsRoot, DefaultLocale, name+".meta.toml")
-	return loadMetadataFile(path)
-}
-
 // ---------------------------------------------------------------------------
 // 加载
 // ---------------------------------------------------------------------------
@@ -355,6 +343,8 @@ func (m *Manager) Reload() {
 	}
 	m.mu.RUnlock()
 	if err := m.LoadPrompts(); err != nil {
+		// B7：加载失败不能静默——保留旧模板继续服务，但必须留下排查线索。
+		slog.Warn("prompt 重载失败，沿用旧模板", "err", err)
 		return
 	}
 	m.mu.RLock()

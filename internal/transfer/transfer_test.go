@@ -340,6 +340,28 @@ func TestParseTransferTimeLayouts(t *testing.T) {
 	}
 }
 
+// TestFormatTransferTimeRoundTripNonLocalZone 回归 B1：非 Local 时区构造的
+// 时间经 formatTransferTime 落盘、parseTransferTime 读回后必须为同一时刻
+// （旧实现按 t 自身时区 Format，跨时区导入会漂移数小时）。
+func TestFormatTransferTimeRoundTripNonLocalZone(t *testing.T) {
+	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	// 与当前进程 Local 偏移不同的候选时区（Local 只有一个偏移，必有一个命中）。
+	for _, offset := range []int{8 * 3600, -5 * 3600} {
+		_, localOffset := base.In(time.Local).Zone()
+		if localOffset == offset {
+			continue
+		}
+		in := base.In(time.FixedZone("foreign", offset))
+		parsed, err := parseTransferTime(formatTransferTime(in))
+		if err != nil {
+			t.Fatalf("parseTransferTime: %v", err)
+		}
+		if !parsed.Equal(in) {
+			t.Fatalf("往返后时刻漂移: in=%v parsed=%v diff=%v", in, parsed, parsed.Sub(in))
+		}
+	}
+}
+
 func TestSortSectionsStableOrder(t *testing.T) {
 	sorted := SortSections([]string{SectionImages, SectionMessages, SectionJargons})
 	want := []string{SectionMessages, SectionJargons, SectionImages}

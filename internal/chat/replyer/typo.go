@@ -86,21 +86,16 @@ func loadCharFrequency() (map[string]float64, error) {
 func loadWordFrequencies() map[string]float64 {
 	wordFreqOnce.Do(func() {
 		words := map[string]float64{}
-		seg, err := getSegmenter()
-		if err != nil {
+		if _, err := getSegmenter(); err != nil {
 			wordFrequencies = words
 			return
 		}
 		// gse 内置词典无直接全量导出；通过分词常用字词集合近似不可取，
 		// 这里退而求其次：按需查询词频（Find），构建查询缓存。
 		wordFrequencies = words
-		segmenterFinder = seg
 	})
 	return wordFrequencies
 }
-
-// segmenterFinder provides word-frequency lookups (jieba dict.txt equivalent).
-var segmenterFinder gse.Segmenter
 
 // wordFreqCache caches Find() results (词频查询缓存)。
 var (
@@ -181,21 +176,6 @@ func containsChineseChar(word string) bool {
 	return false
 }
 
-// getPinyin mirrors _get_pinyin: 将中文句子拆分成单个汉字并获取其拼音。
-func (g *ChineseTypoGenerator) getPinyin(sentence string) [][2]string {
-	var result [][2]string
-	for _, char := range sentence {
-		if char == ' ' || char == '\t' || char == '\n' || !isChineseCharRune(char) {
-			continue
-		}
-		pys := pinyin.SinglePinyin(char, pinyin.Args{Style: pinyin.Tone3})
-		if len(pys) == 0 {
-			continue
-		}
-		result = append(result, [2]string{string(char), pys[0]})
-	}
-	return result
-}
 
 // getSimilarTonePinyin mirrors _get_similar_tone_pinyin（static）。
 func getSimilarTonePinyin(py string) string {

@@ -567,8 +567,9 @@ func scanMessageRecord(scanner interface{ Scan(...any) error }) (MessageRecord, 
 
 const transferTimeLayout = "2006-01-02 15:04:05.999999"
 
-// formatTransferTime 编码为数据库 DATETIME 文本。
-func formatTransferTime(t time.Time) string { return t.Format(transferTimeLayout) }
+// formatTransferTime 编码为数据库 DATETIME 文本（B1：统一转 Local 后落盘，
+// 与 parseTransferTime 的 time.Local 读回对称，避免跨时区导入漂移）。
+func formatTransferTime(t time.Time) string { return t.Local().Format(transferTimeLayout) }
 
 // normalizeTransferTimeString 归一化时间文本（空值原样返回）。
 func normalizeTransferTimeString(value string) string {

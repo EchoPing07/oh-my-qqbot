@@ -796,7 +796,6 @@ type uploadAPI struct {
 	merges   []map[string]any
 	finishes []map[string]any
 	paths    []string
-	putPath  string
 	putBody  []byte
 	fileInfo string
 }

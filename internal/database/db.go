@@ -142,7 +142,10 @@ func (db *DB) WalCheckpointPassive() error {
 const timeLayout = "2006-01-02 15:04:05.999999"
 
 // formatTime / parseTime 统一 DATETIME 编解码。
-func formatTime(t time.Time) string { return t.Format(timeLayout) }
+// formatTime 统一转 Local 后落盘（B1）：若按 t 自身时区 Format，容器 TZ=UTC
+// 而上游时间带 +08:00 时会落盘出两套钟面值，parseTime 又一律按 time.Local
+// 读回，被动窗口/时段规则/排序随之漂移数小时；统一 Local 后落盘与读回对称。
+func formatTime(t time.Time) string { return t.Local().Format(timeLayout) }
 
 func parseTime(s string) (time.Time, error) {
 	if s == "" {
@@ -161,24 +164,6 @@ type timeParseError string
 func (e timeParseError) Error() string { return "无法解析时间: " + string(e) }
 
 func errParseTime(s string) error { return timeParseError(s) }
-
-// nullString 把可能为空的字符串转为 sql 可用值。
-func nullString(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-// scanNullString 读取可空字符串列。
-func scanNullString(row interface{ Scan(...any) error }, dst *string) error {
-	var s sql.NullString
-	if err := row.Scan(&s); err != nil {
-		return err
-	}
-	*dst = s.String
-	return nil
-}
 
 // globalOpen 防止同一路径重复打开（测试守护）。
 var (

@@ -9,9 +9,8 @@ import (
 
 // fixedClock 是一个可手动推进的时钟。
 type fixedClock struct {
-	mu   sync.Mutex
-	now  time.Time
-	zone *time.Location
+	mu  sync.Mutex
+	now time.Time
 }
 
 func newFixedClock(start time.Time) *fixedClock {

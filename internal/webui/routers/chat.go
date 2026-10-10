@@ -1,12 +1,12 @@
-// chat 路由 — 会话列表/消息查询 + WEBUI_CHAT_PLATFORM 发言注入。
-// 对齐 routers/chat/routes.py 的 sessions/history 面（Go 版裁剪 adapter/policy 面）。
+// chat 路由 — 会话列表/消息查询（只读）。
+// 对齐 routers/chat/routes.py 的 sessions/history 面（Go 版裁剪 adapter/policy 面；
+// WEBUI_CHAT_PLATFORM 发言注入从未接线，已随轻量化移除）。
 package routers
 
 import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"time"
 )
 
 // chatSessionItem 对齐 sessions 列表行。
@@ -125,52 +125,5 @@ func handleChatHistory(d *Deps) http.HandlerFunc {
 			items = append(items, m)
 		}
 		ok(w, map[string]any{"messages": items, "count": len(items), "session_id": sessionID})
-	}
-}
-
-// handleChatSend 把 WebUI 聊天页发言注入聊天主链路（WEBUI_CHAT_PLATFORM 语义）。
-// 装配层实现 ChatInjector：构造 SessionMessage → ChatManager.RegisterMessage →
-// 存库 → 心流 runtime.RegisterMessage。
-func handleChatSend(d *Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if d.Chat == nil {
-			fail(w, http.StatusNotImplemented, "WebUI 聊天平台未接线（装配层未提供 ChatInjector）")
-			return
-		}
-		var msg WebUIChatMessage
-		if !decodeJSON(w, r, &msg) {
-			return
-		}
-		if msg.Content == "" {
-			fail(w, http.StatusBadRequest, "content 不能为空")
-			return
-		}
-		if msg.UserName == "" {
-			msg.UserName = "WebUI用户"
-		}
-		if err := d.Chat.InjectWebUIMessage(msg); err != nil {
-			fail(w, http.StatusInternalServerError, "消息注入失败: "+err.Error())
-			return
-		}
-		ok(w, map[string]any{
-			"accepted": true,
-			"platform": WebUIChatPlatform,
-			"time":     time.Now().Format(time.RFC3339),
-		})
-	}
-}
-
-// handleChatPlatforms 返回虚拟平台信息（对齐 GET /api/chat/platforms 简化面）。
-func handleChatPlatforms(d *Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		platforms := []map[string]any{
-			{
-				"platform": WebUIChatPlatform,
-				"name":     "WebUI 内置聊天",
-				"type":     "virtual",
-				"enabled":  d.Chat != nil,
-			},
-		}
-		ok(w, map[string]any{"platforms": platforms})
 	}
 }

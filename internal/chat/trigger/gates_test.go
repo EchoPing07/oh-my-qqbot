@@ -50,9 +50,6 @@ func testMessage(messageID string, at float64, options ...func(*message.SessionM
 	return sessionMessage
 }
 
-func withText(text string) func(*message.SessionMessage) {
-	return func(m *message.SessionMessage) { m.ProcessedPlainText = message.StringPtr(text) }
-}
 
 func withUser(userID string) func(*message.SessionMessage) {
 	return func(m *message.SessionMessage) {

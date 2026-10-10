@@ -77,12 +77,3 @@ func isEnglishLetterRune(char rune) bool {
 	return 'a' <= lower && lower <= 'z'
 }
 
-// isEnglishLetterString is the string-form helper used by the splitter.
-func isEnglishLetterString(char string) bool {
-	for _, r := range char {
-		// Python compares single characters; multi-rune lowering (rare) is
-		// treated as "not an English letter" exactly like the string compare.
-		return isEnglishLetterRune(r)
-	}
-	return false
-}

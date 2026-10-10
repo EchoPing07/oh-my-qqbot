@@ -26,12 +26,6 @@ func tsToTime(ts float64) time.Time {
 	return time.Unix(sec, nsec).UTC()
 }
 
-func timeToTS(t time.Time) float64 {
-	if t.IsZero() {
-		return 0
-	}
-	return float64(t.UnixNano()) / 1e9
-}
 
 // ---------------------------------------------------------------------------
 // 哈希：对齐 core/utils/hash.py
@@ -1183,12 +1177,6 @@ func nullableFloat(value *float64) any {
 	return *value
 }
 
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
 
 // CountRunes 返回文本的 rune 数（对齐 Python len()）。
 func CountRunes(text string) int { return len([]rune(text)) }

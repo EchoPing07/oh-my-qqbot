@@ -50,6 +50,9 @@ function SetupWizard() {
   const [personality, setPersonality] = useState<Personality>({ personality: '', reply_style: '' })
   const [model, setModel] = useState<ModelRoute>({ provider_name: '', base_url: '', api_key: '', model_identifier: '' })
   const [skipConfirm, setSkipConfirm] = useState(false)
+  // 首次 setup 标志（B5）：仅首次全量覆盖各任务 model_list；
+  // 重跑向导只补空任务，不再把「模型配置」页的逐任务路由整体重置。
+  const [firstSetup, setFirstSetup] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -67,6 +70,7 @@ function SetupWizard() {
           navigate({ to: '/auth' })
           return
         }
+        setFirstSetup(Boolean(status.is_first_setup))
         const [bot, persona] = await Promise.all([getBotSection<Record<string, unknown>>('bot'), getBotSection<Record<string, unknown>>('personality')])
         if (cancelled) return
         setBasic({
@@ -144,7 +148,7 @@ function SetupWizard() {
             reply_style: personality.reply_style.trim(),
           })
         } else {
-          await saveModelRoute(model)
+          await saveModelRoute(model, firstSetup)
         }
         return true
       } catch (err) {
@@ -154,7 +158,7 @@ function SetupWizard() {
         setSaving(false)
       }
     },
-    [basic, personality, model, validateStep0, validateStep1]
+    [basic, personality, model, firstSetup, validateStep0, validateStep1]
   )
 
   const goNext = async () => {
@@ -338,8 +342,10 @@ function SetupWizard() {
   )
 }
 
-/** 把向导里的服务商/模型/任务路由写进 model_config（合并语义）。 */
-async function saveModelRoute(route: ModelRoute): Promise<void> {
+/** 把向导里的服务商/模型/任务路由写进 model_config（合并语义）。
+ *  firstSetup 为 true 时全量覆盖 TASK_ORDER 各任务 model_list；否则只补
+ *  空任务，保留用户在「模型配置」页配置的逐任务路由（B5）。 */
+async function saveModelRoute(route: ModelRoute, firstSetup: boolean): Promise<void> {
   const config = await getModelConfig()
   const providers = Array.isArray(config.api_providers) ? [...(config.api_providers as Array<Record<string, unknown>>)] : []
   const models = Array.isArray(config.models) ? [...(config.models as Array<Record<string, unknown>>)] : []
@@ -384,7 +390,13 @@ async function saveModelRoute(route: ModelRoute): Promise<void> {
   }
 
   for (const task of TASK_ORDER) {
-    taskConfig[task] = { ...(taskConfig[task] ?? {}), model_list: [modelName] }
+    const existing = taskConfig[task]
+    const currentList = Array.isArray(existing?.model_list)
+      ? (existing.model_list as unknown[]).filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+      : []
+    // B5：仅首次 setup 全量覆盖；重跑向导只补空/占位任务。
+    if (!firstSetup && currentList.length > 0) continue
+    taskConfig[task] = { ...(existing ?? {}), model_list: [modelName] }
   }
 
   await saveModelConfig({ ...config, api_providers: providers, models, model_task_config: taskConfig })

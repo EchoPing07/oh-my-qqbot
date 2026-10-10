@@ -105,8 +105,6 @@ type JargonLearner struct {
 	LLM       LLMFunc
 	Sessions  SessionExistsFunc
 	Logf      func(format string, args ...any)
-
-	mu sync.Mutex
 }
 
 func (l *JargonLearner) log(format string, args ...any) {

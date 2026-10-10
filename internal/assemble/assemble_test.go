@@ -188,6 +188,78 @@ func TestRegisterMessageAloneCannotSatisfyHeartflow(t *testing.T) {
 	}
 }
 
+// TestMessageBanFilterDropsBeforePersist 接线回归：message_receive.ban_words /
+// ban_msgs_regex 必须在登记前过滤（命中消息不入库、不建会话）；坏正则只跳过
+// 不 panic；无纯文本的富媒体消息不受影响；私聊同样生效。
+func TestMessageBanFilterDropsBeforePersist(t *testing.T) {
+	app := newPipelineApp(t)
+	global := app.Cfg.GetGlobalConfig()
+	global.MessageReceive.BanWords = []string{"违禁词", ""}
+	global.MessageReceive.BanMsgsRegex = []string{"^广告.*$", "[[坏正则"}
+
+	// ban_words 包含匹配 → 丢弃（群聊）。
+	banned := makeQQGroupMessage("u-ban", "g-ban")
+	banned.ProcessedPlainText = message.StringPtr("这条含违禁词的内容应被丢弃")
+	if err := app.handleMessage(context.Background(), banned); err != nil {
+		t.Fatalf("handleMessage(banned): %v", err)
+	}
+	if s := app.ChatManager.GetExistingSessionBySessionID(banned.SessionID); s != nil {
+		t.Fatal("命中 ban_words 的消息不应创建会话（应在登记前丢弃）")
+	}
+
+	// ban_msgs_regex 正则匹配 → 丢弃（私聊同样生效）。
+	bannedRegex := makeQQGroupMessage("u-ban2", "")
+	bannedRegex.MessageInfo.GroupInfo = nil
+	bannedRegex.ProcessedPlainText = message.StringPtr("广告位招租")
+	if err := app.handleMessage(context.Background(), bannedRegex); err != nil {
+		t.Fatalf("handleMessage(bannedRegex): %v", err)
+	}
+	if s := app.ChatManager.GetExistingSessionBySessionID(bannedRegex.SessionID); s != nil {
+		t.Fatal("命中 ban_msgs_regex 的消息不应创建会话（私聊也应生效）")
+	}
+
+	// 坏正则只跳过不 panic；未命中的正常消息放行。
+	okMsg := makeQQGroupMessage("u-ok", "g-ok")
+	okMsg.ProcessedPlainText = message.StringPtr("正常聊天内容")
+	if err := app.handleMessage(context.Background(), okMsg); err != nil {
+		t.Fatalf("handleMessage(ok): %v", err)
+	}
+	if s := app.ChatManager.GetExistingSessionBySessionID(okMsg.SessionID); s == nil {
+		t.Fatal("未命中过滤规则的消息应正常建会话")
+	}
+
+	// 纯图片消息无纯文本 → 不受 ban 过滤影响。
+	picMsg := makeQQGroupMessage("u-pic", "g-pic")
+	picMsg.RawMessage = message.NewMessageSequence(message.NewImageComponent([]byte("img"), "pic.png"))
+	if err := app.handleMessage(context.Background(), picMsg); err != nil {
+		t.Fatalf("handleMessage(pic): %v", err)
+	}
+	if s := app.ChatManager.GetExistingSessionBySessionID(picMsg.SessionID); s == nil {
+		t.Fatal("无纯文本的富媒体消息不应被 ban 过滤丢弃")
+	}
+}
+
+// TestMessageBannedHitPatterns 直接覆盖 messageBanned 的命中语义。
+func TestMessageBannedHitPatterns(t *testing.T) {
+	app := newPipelineApp(t)
+	global := app.Cfg.GetGlobalConfig()
+	global.MessageReceive.BanWords = []string{"敏感"}
+	global.MessageReceive.BanMsgsRegex = []string{"\\d{4}-\\d{2}-\\d{2}"}
+
+	if hit := app.messageBanned("含敏感词"); hit != "敏感" {
+		t.Fatalf("应命中 ban_words, got %q", hit)
+	}
+	if hit := app.messageBanned("日期 2026-10-11 在正文里"); hit != `\d{4}-\d{2}-\d{2}` {
+		t.Fatalf("应命中 ban_msgs_regex, got %q", hit)
+	}
+	if hit := app.messageBanned("正常内容"); hit != "" {
+		t.Fatalf("未命中应返回空, got %q", hit)
+	}
+	if hit := app.messageBanned(""); hit != "" {
+		t.Fatalf("空文本不过滤, got %q", hit)
+	}
+}
+
 // TestResolveChannelCredentials 校验 QQ 渠道凭据的优先级：
 // bot_config 的 [bot] app_id/app_secret 优先，缺省才回退环境变量。
 func TestResolveChannelCredentials(t *testing.T) {

@@ -45,7 +45,6 @@ func Register(mux *http.ServeMux, d *Deps) {
 
 	// ---- system 路由（routers/system.py，前缀 /api/webui/system）----
 	mux.HandleFunc("GET /api/webui/system/status", requireAuth(d, handleSystemStatus(d)))
-	mux.HandleFunc("GET /api/webui/system/news", requireAuth(d, handleSystemNews(d)))
 	mux.HandleFunc("POST /api/webui/system/reload-config", requireAuth(d, handleReloadConfig(d)))
 
 	// ---- logs 路由（logs_ws.py + 级别控制）----
@@ -87,11 +86,10 @@ func Register(mux *http.ServeMux, d *Deps) {
 	mux.HandleFunc("GET /api/webui/statistics/models", requireAuth(d, handleStatsModels(d)))
 	mux.HandleFunc("GET /api/webui/statistics/daily", requireAuth(d, handleStatsDaily(d)))
 
-	// ---- chat 路由（routers/chat/routes.py 简化面 + WEBUI_CHAT_PLATFORM 注入）----
+	// ---- chat 路由（routers/chat/routes.py 简化面；聊天页只读，
+	// WEBUI_CHAT_PLATFORM 发言注入从未接线，随轻量化原则移除）----
 	mux.HandleFunc("GET /api/webui/chat/sessions", requireAuth(d, handleChatSessions(d)))
 	mux.HandleFunc("GET /api/webui/chat/history", requireAuth(d, handleChatHistory(d)))
-	mux.HandleFunc("POST /api/webui/chat/send", requireAuth(d, handleChatSend(d)))
-	mux.HandleFunc("GET /api/webui/chat/platforms", requireAuth(d, handleChatPlatforms(d)))
 
 	// ---- mcp 路由（routers/mcp.py）----
 	mux.HandleFunc("GET /api/webui/mcp/status", requireAuth(d, handleMCPStatus(d)))
@@ -99,9 +97,6 @@ func Register(mux *http.ServeMux, d *Deps) {
 	// ---- data-transfer 路由（routers/data_transfer.py 简化面）----
 	mux.HandleFunc("POST /api/webui/data-transfer/export", requireAuth(d, handleExport(d)))
 	mux.HandleFunc("POST /api/webui/data-transfer/import", requireAuth(d, handleImport(d)))
-
-	// ---- news 路由（routers/news.py）----
-	mux.HandleFunc("GET /api/webui/news", requireAuth(d, handleNews(d)))
 
 	// ---- user-emojis 路由（routers/user_emoji.py 简化面）----
 	mux.HandleFunc("GET /api/webui/user-emojis", requireAuth(d, handleUserEmojiList(d)))

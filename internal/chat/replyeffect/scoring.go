@@ -40,10 +40,6 @@ func Clamp(value, lower, upper float64) float64 {
 
 // recordAssociations mirrors _record_associations：本记录自己收到的全部关联边。
 func recordAssociations(record *Record) [][2]int {
-	type edge struct {
-		followupIndex    int
-		associationIndex int
-	}
 	edges := make([][2]int, 0)
 	for followupIndex := range record.FollowupMessages {
 		followup := &record.FollowupMessages[followupIndex]

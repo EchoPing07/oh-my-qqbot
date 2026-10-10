@@ -44,6 +44,10 @@ const (
 	AuthQuery  AuthKind = "query"
 )
 
+// maxResponseBodyBytes 是单次响应体的读取上限（B9：超限视为异常响应，
+// 返回明确错误而非静默截断后让 JSON 解析失败烧重试）。
+const maxResponseBodyBytes = 64 << 20
+
 // APIProvider mirrors the裁剪后的 APIProvider of model_configs.py.
 type APIProvider struct {
 	Name             string            `toml:"name"`
@@ -680,9 +684,14 @@ func (c *Client) do(ctx context.Context, endpoint string, payload []byte, header
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	raw, err := io.ReadAll(io.LimitReader(response.Body, 64<<20))
+	// B9：读 64MB+1 探测截断——响应体被静默截断后 JSON 解析必然失败，
+	// 白白烧掉重试额度；超限时直接返回明确的不可重试错误。
+	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return nil, &NetworkError{Err: err}
+	}
+	if len(raw) > maxResponseBodyBytes {
+		return nil, fmt.Errorf("llm: %s 响应体超过 %dMB 上限，拒绝解析（疑似异常大响应）", requestURL, maxResponseBodyBytes>>20)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, &HTTPError{

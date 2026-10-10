@@ -215,15 +215,6 @@ func (r *Runtime) RequestPlannerInterruptForMessage(sessionMessage *message.Sess
 	}
 }
 
-// interruptBudgetAvailable reports whether another interrupt request would be
-// accepted (mirrors the guards of `request` for the "limit" decision).
-func (r *Runtime) interruptBudgetAvailable() bool {
-	maxCount := r.PlannerInterruptMaxConsecutiveCount()
-	if maxCount <= 0 {
-		return false
-	}
-	return r.interrupt.ConsecutiveCount() < maxCount
-}
 
 // ResetPlannerInterruptCount mirrors the `unbind(interrupted=False)` reset used
 // by `_unbind_planner_interrupt_flag`.

@@ -110,34 +110,6 @@ func (r *coveringRunner) run(_ context.Context, prompt string) (string, error) {
 	return response, nil
 }
 
-// associatedJudgeResponse 构造「一条消息承接 Bot 回复 + 其余消息无关联」的合法评审 JSON。
-func associatedJudgeResponse(messageID string, candidateID string, otherMessageIDs ...string) string {
-	messages := []map[string]any{
-		{
-			"message_id": messageID,
-			"associations": []any{map[string]any{
-				"candidate_id":           candidateID,
-				"attribution_confidence": 0.9,
-				"stance_target":          "bot_content",
-				"stance":                 "appreciation",
-				"contribution":           "advance",
-				"reason":                 "用户明确接着 Bot 的建议继续讨论",
-				"evidence_spans":         []any{"那按你说的试试"},
-				"confidence":             0.7,
-			}},
-		},
-	}
-	for _, other := range otherMessageIDs {
-		messages = append(messages, map[string]any{"message_id": other, "associations": []any{}})
-	}
-	payload := map[string]any{
-		"strategy": map[string]any{"primary": "answer", "secondary": []any{"opinion"}, "confidence": 0.8},
-		"messages": messages,
-	}
-	encoded, _ := json.Marshal(payload)
-	return string(encoded)
-}
-
 func newTestTracker(runner JudgeRunner) (*Tracker, *fakeClock, *MemoryStore) {
 	clock := newFakeClock(time.Date(2026, 3, 1, 12, 0, 0, 0, time.Local))
 	store := NewMemoryStore()
