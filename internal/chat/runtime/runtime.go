@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -185,6 +186,10 @@ type Runtime struct {
 	scheduler *trigger.MessageTurnScheduler
 	backoff   *trigger.IdleBackoffController
 	engine    *Engine
+
+	// 引擎循环守护（panic 自愈；字段均由 r.mu 保护）。
+	loopStop       <-chan struct{} // Start 时记录的 stop 通道（自愈重建用）
+	loopSupervised bool            // 引擎循环 goroutine 是否已有守护在跑
 
 	// hooks injected by the runtime owner (P4b wiring).
 	planner                 PlannerLLM
@@ -1137,16 +1142,75 @@ func (r *Runtime) Start(stop <-chan struct{}) {
 	r.mu.Lock()
 	alreadyRunning := r.running
 	r.running = true
+	r.loopStop = stop
 	r.mu.Unlock()
 	if alreadyRunning {
 		return
 	}
 	r.log("%s Maisaka 运行时已启动", r.LogPrefix())
+	r.superviseEngineLoop(stop)
+}
+
+// EnsureBackgroundTasksRunning mirrors `_ensure_background_tasks_running`
+// (trimmed to the loop supervision implemented here): 运行态下引擎循环
+// goroutine 不在时重新拉起（自愈；幂等）。
+func (r *Runtime) EnsureBackgroundTasksRunning() {
+	if !r.IsRunning() {
+		return
+	}
+	r.mu.Lock()
+	stop := r.loopStop
+	r.mu.Unlock()
+	if stop == nil {
+		return
+	}
+	r.superviseEngineLoop(stop)
+}
+
+// superviseEngineLoop 守护引擎循环 goroutine：panic 时清理排队触发并重建循环，
+// 保证单条消息的异常不会击穿 goroutine 使进程退出（幂等：已有守护时直接返回）。
+func (r *Runtime) superviseEngineLoop(stop <-chan struct{}) {
+	r.mu.Lock()
+	if r.loopSupervised {
+		r.mu.Unlock()
+		return
+	}
+	r.loopSupervised = true
+	r.mu.Unlock()
+
 	go func() {
-		if err := r.engine.RunLoop(stop); err != nil {
-			r.log("%s Maisaka 内部循环发生异常: %v", r.LogPrefix(), err)
+		defer func() {
+			r.mu.Lock()
+			r.loopSupervised = false
+			r.mu.Unlock()
+		}()
+		for r.IsRunning() {
+			if !r.runEngineLoop(stop) {
+				return
+			}
+			// panic 自愈：runEngineLoop 已清理本轮排队触发，这里重建循环
+			//（stop 关闭时下一次 RunLoop 会立即返回）。
 		}
 	}()
+}
+
+// runEngineLoop 运行一次引擎循环；panic 被拦截时返回 true（由守护层重建）。
+func (r *Runtime) runEngineLoop(stop <-chan struct{}) (panicked bool) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.log("%s Maisaka 内部循环 panic 已拦截，清理排队触发后自愈: %v\n%s",
+				r.LogPrefix(), rec, debug.Stack())
+			r.mu.Lock()
+			r.internalTurnQueue = nil
+			r.messageTurnScheduled = false
+			r.mu.Unlock()
+			panicked = true
+		}
+	}()
+	if err := r.engine.RunLoop(stop); err != nil {
+		r.log("%s Maisaka 内部循环发生异常: %v", r.LogPrefix(), err)
+	}
+	return false
 }
 
 // SetRoundObserver installs a monitoring observer for finished rounds.
@@ -1181,15 +1245,6 @@ func (r *Runtime) Stop() {
 	}
 	r.mu.Unlock()
 	r.EnterStopState()
-}
-
-// EnsureBackgroundTasksRunning mirrors `_ensure_background_tasks_running`
-// (trimmed to the loop supervision implemented here).
-func (r *Runtime) EnsureBackgroundTasksRunning() {
-	if !r.IsRunning() {
-		return
-	}
-	r.engine.ensureRunning()
 }
 
 // WaitForMessageQuietPeriod mirrors `_wait_for_message_quiet_period`.

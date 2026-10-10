@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"oh-my-qqbot/internal/chat/heartflow"
 	"oh-my-qqbot/internal/chat/manager"
 	"oh-my-qqbot/internal/chat/runtime"
+	"oh-my-qqbot/internal/chat/sender"
 	"oh-my-qqbot/internal/chat/tools"
 	"oh-my-qqbot/internal/chat/trigger"
 	"oh-my-qqbot/internal/config"
@@ -31,6 +33,7 @@ import (
 	"oh-my-qqbot/internal/memorix"
 	"oh-my-qqbot/internal/message"
 	"oh-my-qqbot/internal/monitor"
+	"oh-my-qqbot/internal/prompt"
 	"oh-my-qqbot/internal/qq"
 )
 
@@ -76,7 +79,19 @@ type App struct {
 	Heartflow   *heartflow.HeartflowManager
 	Channel     *qq.Channel
 
-	planner *plannerBridge
+	// planner 是共享 PlannerLLM 桥（plannerMu 保护惰性构建）。
+	planner   *plannerBridge
+	plannerMu sync.Mutex
+
+	// 工具/回复链路的共享实例（惰性构建；见 planner_bridge.go / reply_wiring.go）。
+	registryMu      sync.RWMutex
+	toolReg         *tools.ToolRegistry
+	sendOnce        sync.Once
+	sendSvc         *sender.SendService
+	replySenderOnce sync.Once
+	replySenderImpl *replySegmentSender
+	promptOnce      sync.Once
+	promptMgr       *prompt.Manager
 
 	// Injected starters (set by cmd/bot/main.go, which owns the webui/mcp
 	// imports; the core pipeline works without them).
@@ -216,14 +231,14 @@ func (a *App) newRuntime(sessionID string) (*runtime.Runtime, error) {
 	rt := global.Chat.ReplyTiming
 	isGroup := !stringsHasSuffixPrivate(sessionID)
 	opts := runtime.Options{
-		SessionID:                          sessionID,
-		IsGroupSession:                     isGroup,
-		MaxContextSize:                     global.Chat.MaxContextSize,
+		SessionID:                           sessionID,
+		IsGroupSession:                      isGroup,
+		MaxContextSize:                      global.Chat.MaxContextSize,
 		PlannerInterruptMaxConsecutiveCount: rt.PlannerInterruptMaxConsecutiveCount,
-		MaxConsecutiveWaitCount:            rt.MaxConsecutiveWaitCount,
-		EnableContextOptimization:          global.Chat.EnableContextOptimization,
-		MidTermMemory:                      global.Chat.MidTermMemory,
-		MidTermMemoryLength:                global.Chat.MidTermMemoryLenth,
+		MaxConsecutiveWaitCount:             rt.MaxConsecutiveWaitCount,
+		EnableContextOptimization:           global.Chat.EnableContextOptimization,
+		MidTermMemory:                       global.Chat.MidTermMemory,
+		MidTermMemoryLength:                 global.Chat.MidTermMemoryLenth,
 		IsBotSelf: func(platform, userID string) bool {
 			return userID != "" && userID == global.Bot.QQAccount
 		},
@@ -339,7 +354,20 @@ func (a *App) startChannel(ctx context.Context) error {
 		Quota:     &qq.ProactiveOptions{GroupPerMinute: 20, GroupPerDay: 1000},
 		Logger:    a.log,
 	})
-	handler := func(ctx context.Context, msg *message.SessionMessage) error {
+	// 防御纵深：渠道回调里的任何 panic 都不允许击穿 goroutine 使进程退出
+	//（recover 后记录 panic 值与栈，返回 nil 表示消息已被消费）。
+	handler := func(ctx context.Context, msg *message.SessionMessage) (err error) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				messageID := ""
+				if msg != nil {
+					messageID = msg.MessageID
+				}
+				a.log.Error("消息处理发生 panic（已拦截）",
+					"panic", rec, "stack", string(debug.Stack()), "message_id", messageID)
+				err = nil
+			}
+		}()
 		return a.handleMessage(ctx, msg)
 	}
 	go func() {

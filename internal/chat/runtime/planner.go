@@ -70,6 +70,11 @@ type PlannerToolCall struct {
 	CallID   string
 	FuncName string
 	Args     map[string]any
+	// LogicalTurnID / Reasoning 由引擎在执行前回填（对齐 Python 工具调用
+	// 的 logical_turn_id / reasoning 传递；wait 进入等待态依赖非空
+	// logical_turn_id，reasoning 作为 reply_reference 的兜底文案）。
+	LogicalTurnID string
+	Reasoning     string
 }
 
 // PlannerToolResult mirrors ToolExecutionResult (P4b).

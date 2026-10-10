@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -171,3 +172,68 @@ func TestEmitHelpersPayload(t *testing.T) {
 
 // 编译期对齐 internal.EventBus 契约。
 var _ contracts.EventBus = (*Bus)(nil)
+
+// 回归 P0：Emit 与 Subscribe/cancel 并发时不得向已关闭 channel 发送。
+// 修复前 Emit 在 RUnlock 之后才发送，与 cancel 的 delete+close 之间存在
+// 竞态窗口，最小并发程序即可稳定复现 "send on closed channel" panic。
+// 本测试以数千轮订阅/取消与多路 Emit 并发对撞（配合 -race 运行）。
+func TestBusEmitCancelRaceNeverPanics(t *testing.T) {
+	bus := NewBus()
+	const emitters = 4
+	const rounds = 3000
+
+	var emitWG sync.WaitGroup
+	for i := 0; i < emitters; i++ {
+		emitWG.Add(1)
+		go func() {
+			defer emitWG.Done()
+			for j := 0; j < rounds; j++ {
+				bus.Emit(contracts.Event{Kind: contracts.EventMessageIngested, SessionID: "race"})
+			}
+		}()
+	}
+
+	// 订阅/取消与 Emit 全程并发（cancel 内部 delete+close，历史崩溃路径）。
+	subWG := sync.WaitGroup{}
+	for i := 0; i < 2; i++ {
+		subWG.Add(1)
+		go func() {
+			defer subWG.Done()
+			for j := 0; j < rounds; j++ {
+				ch, cancel := bus.Subscribe(1)
+				// 消费一条以模拟真实订阅方，随即取消（触发 close 路径）。
+				select {
+				case <-ch:
+				default:
+				}
+				cancel()
+			}
+		}()
+	}
+
+	subWG.Wait()
+	emitWG.Wait()
+
+	if got := bus.SubscriberCount(); got != 0 {
+		t.Fatalf("全部取消后订阅者应为 0, got %d", got)
+	}
+}
+
+// 回归补充：取消后的订阅者 channel 已关闭，range 语义应正常退出。
+func TestBusSubscriberRangeExitsOnCancel(t *testing.T) {
+	bus := NewBus()
+	ch, cancel := bus.Subscribe(2)
+
+	bus.Emit(contracts.Event{Kind: contracts.EventSessionStart, SessionID: "s1"})
+	cancel()
+
+	received := 0
+	for range ch {
+		received++
+	}
+	if received != 1 {
+		t.Fatalf("close 前缓冲内应有且仅有 1 条事件, got %d", received)
+	}
+	// 取消后 Emit 不派发、不 panic。
+	bus.Emit(contracts.Event{Kind: contracts.EventMessageSent})
+}

@@ -118,7 +118,10 @@ func startMCP(ctx context.Context, app *assemble.App) error {
 	if err := service.EnsureInitialized(ctx, mcpCfg); err != nil {
 		return err
 	}
+	// 合并 MCP 条目（deferred，经 tool_search 发现）并替换 App 的共享注册表：
+	// planner 会话视图按 App 解析注册表，替换对所有会话生效。此前合并结果被
+	// 丢弃，MCP 工具从未真正接入 planner。
 	registry, _ := mcp.NewProvider(service).Register(app.BuiltinEntries())
-	_ = registry // 新 registry 已包含 MCP 条目；planner 惰性读取时使用共享实例
+	app.SetToolRegistry(registry)
 	return nil
 }

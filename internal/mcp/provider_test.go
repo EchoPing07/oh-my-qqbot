@@ -109,10 +109,10 @@ func TestProviderDeferredRegistrationAndToolSearchActivation(t *testing.T) {
 	}
 
 	provider := NewProvider(service)
-	registry, entries := provider.Register(tools.BuiltinEntries(tools.FeatureFlags{BotNickname: "麦麦"}))
+	registry, entries := provider.Register(tools.BuiltinEntries(tools.FeatureFlags{BotNickname: "麦麦"}, nil))
 
 	// 内置 + MCP 条目一起注册。
-	if len(entries) != len(tools.BuiltinEntries(tools.FeatureFlags{BotNickname: "麦麦"}))+2 {
+	if len(entries) != len(tools.BuiltinEntries(tools.FeatureFlags{BotNickname: "麦麦"}, nil))+2 {
 		t.Fatalf("条目数异常: %d", len(entries))
 	}
 
@@ -233,7 +233,7 @@ func TestProviderPermissionRules(t *testing.T) {
 	}
 
 	provider := NewProvider(service)
-	registry, _ := provider.Register(tools.BuiltinEntries(tools.FeatureFlags{}))
+	registry, _ := provider.Register(tools.BuiltinEntries(tools.FeatureFlags{}, nil))
 
 	invoke := func(session SessionContext) tools.ToolResult {
 		t.Helper()
@@ -502,7 +502,7 @@ func TestProviderSetDeferredMakesToolsVisible(t *testing.T) {
 
 	provider := NewProvider(service)
 	provider.SetDeferred(false)
-	registry, _ := provider.Register(tools.BuiltinEntries(tools.FeatureFlags{}))
+	registry, _ := provider.Register(tools.BuiltinEntries(tools.FeatureFlags{}, nil))
 	found := false
 	for _, spec := range registry.VisibleToolSpecs() {
 		if spec.Name == "echo" && spec.ProviderType == "mcp" {

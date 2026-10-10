@@ -10,6 +10,8 @@ import (
 	"oh-my-qqbot/internal/chat/heartflow"
 	"oh-my-qqbot/internal/chat/manager"
 	"oh-my-qqbot/internal/chat/runtime"
+	"oh-my-qqbot/internal/chat/tools"
+	"oh-my-qqbot/internal/chat/trigger"
 	"oh-my-qqbot/internal/config"
 	"oh-my-qqbot/internal/database"
 	"oh-my-qqbot/internal/message"
@@ -220,3 +222,116 @@ func setBotCredentials(t *testing.T, app *App, id, secret string) {
 
 // joinCreds 把 resolveChannelCredentials 的双返回值打包成可比较的数组。
 func joinCreds(id, secret string) [2]string { return [2]string{id, secret} }
+
+// 回归 P0（根因 1/2）：共享注册表的 builtin handler 必须全部装配；未注册
+// 会话的工具调用应失败回执而不是 panic（nil handler 与 nil runtime 两条
+// 历史崩溃路径）。
+func TestToolRegistryHandlersWiredAndGraceful(t *testing.T) {
+	app := newPipelineApp(t)
+	registry := app.Registry()
+	if registry == nil {
+		t.Fatal("共享工具注册表不应为空")
+	}
+	for _, name := range registry.Names() {
+		if registry.HandlerOf(name) == nil {
+			t.Fatalf("工具 %s handler 未装配", name)
+		}
+	}
+	// 未注册会话：wait 依赖解析为 nil → 失败回执。
+	result := registry.Invoke(context.Background(), app.ToolCtx("unknown_session"), tools.ToolInvocation{
+		ToolName:  "wait",
+		CallID:    "call_1",
+		Arguments: map[string]any{"seconds": float64(1)},
+	})
+	if result.Success {
+		t.Fatalf("未注册会话的 wait 应失败回执: %+v", result)
+	}
+}
+
+// 回归 P0（根因 2）：已注册会话的 reply 依赖必须完整装配
+// （runtime/sender/generator/postprocessor 任一为 nil 都会在执行期 panic）。
+func TestReplyDependenciesWiredForSession(t *testing.T) {
+	app := newPipelineApp(t)
+	msg := makeQQGroupMessage("u7", "g7")
+	if err := app.handleMessage(context.Background(), msg); err != nil {
+		t.Fatalf("handleMessage: %v", err)
+	}
+	hf, err := app.Heartflow.GetOrCreateHeartflowChat(msg.SessionID)
+	if err != nil {
+		t.Fatalf("心流会话创建失败: %v", err)
+	}
+
+	deps := app.replyDependencies(msg.SessionID)
+	if deps == nil {
+		t.Fatal("已注册会话的 reply 依赖不应为 nil")
+	}
+	if deps.Runtime == nil || deps.Sender == nil || deps.Generator == nil || deps.PostProcessor == nil {
+		t.Fatalf("reply 依赖不完整: runtime=%v sender=%v generator=%v postprocessor=%v",
+			deps.Runtime != nil, deps.Sender != nil, deps.Generator != nil, deps.PostProcessor != nil)
+	}
+	if deps.SegmentDelay == nil {
+		t.Fatal("SegmentDelay 应已装配")
+	}
+	_ = hf
+}
+
+// 回归（修复 5）：ExecuteToolCalls 必须把非空 LogicalTurnID 传给 wait 工具，
+// 否则进入等待态会被 runtime 拒绝（wait 永远失败）。
+func TestExecuteToolCallsCarriesLogicalTurnID(t *testing.T) {
+	app := newPipelineApp(t)
+	msg := makeQQGroupMessage("u8", "g8")
+	if err := app.handleMessage(context.Background(), msg); err != nil {
+		t.Fatalf("handleMessage: %v", err)
+	}
+	hf, err := app.Heartflow.GetOrCreateHeartflowChat(msg.SessionID)
+	if err != nil {
+		t.Fatalf("心流会话创建失败: %v", err)
+	}
+
+	bridge := app.Planner().ForSession(msg.SessionID)
+	results, err := bridge.ExecuteToolCalls(context.Background(), []runtime.PlannerToolCall{{
+		CallID:        "call_1",
+		FuncName:      "wait",
+		LogicalTurnID: "turn_1",
+		Args:          map[string]any{"seconds": float64(1)},
+	}}, "")
+	if err != nil {
+		t.Fatalf("ExecuteToolCalls: %v", err)
+	}
+	if len(results) != 1 || !results[0].Success {
+		t.Fatalf("wait 应成功执行: %+v err=%v", results, err)
+	}
+	if hf.AgentState() != trigger.StateWait {
+		t.Fatalf("wait 应使 runtime 进入等待态: %s", hf.AgentState())
+	}
+}
+
+// MCP 合并路径：SetToolRegistry 替换共享注册表后，planner 会话视图应立即
+// 使用新注册表（此前合并结果被丢弃，MCP 工具从未接入）。
+func TestSetToolRegistrySwapsSharedRegistry(t *testing.T) {
+	app := newPipelineApp(t)
+	original := app.Registry()
+	if original == nil {
+		t.Fatal("共享工具注册表不应为空")
+	}
+
+	merged := tools.NewToolRegistry(append(
+		tools.BuiltinEntries(app.ToolRegistryFlags(), app.builtinToolDeps()),
+		tools.BuiltinToolEntry{
+			Name:    "mcp_stub_tool",
+			GetSpec: tools.GetWaitToolSpec,
+			HandleTool: func(context.Context, *tools.RuntimeContext, tools.ToolInvocation) tools.ToolResult {
+				return tools.BuildSuccessResult("mcp_stub_tool", "ok", nil, nil, nil)
+			},
+			Stage:           tools.StageAction,
+			Visibility:      tools.VisibilityDeferred,
+			EnabledByConfig: func() bool { return true },
+		},
+	))
+	app.SetToolRegistry(merged)
+
+	view := app.Planner().ForSession("s1")
+	if view.registry() != merged {
+		t.Fatal("会话视图应解析到替换后的共享注册表")
+	}
+}

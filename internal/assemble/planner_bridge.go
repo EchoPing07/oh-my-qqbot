@@ -15,33 +15,64 @@ import (
 )
 
 // plannerBridge satisfies runtime.PlannerLLM for every session. One instance
-// per session (currentSession pinned at construction).
+// per session (currentSession pinned at construction). 工具注册表由 App 持有
+// （builtin + MCP 合并后的共享实例），会话视图按 app 解析，注册表热替换对
+// 所有视图生效。
 type plannerBridge struct {
 	app            *App
-	registry       *tools.ToolRegistry
 	currentSession string
-}
-
-// newPlannerBridge builds the shared tool registry once (per app).
-func (a *App) newPlannerBridge() *plannerBridge {
-	registry := tools.NewToolRegistry(tools.BuiltinEntries(a.ToolRegistryFlags()))
-	return &plannerBridge{app: a, registry: registry}
 }
 
 // Planner exposes the shared planner bridge (lazy).
 func (a *App) Planner() *plannerBridge {
+	a.plannerMu.Lock()
+	defer a.plannerMu.Unlock()
 	if a.planner == nil {
-		a.planner = a.newPlannerBridge()
+		a.planner = &plannerBridge{app: a}
 	}
 	return a.planner
 }
 
-// Registry exposes the tool registry (webui/mcp wiring).
-func (a *App) Registry() *tools.ToolRegistry { return a.Planner().registry }
+// registry resolves the shared tool registry through the app (MCP 热替换后
+// 会话视图无需重建即可看到新注册表).
+func (p *plannerBridge) registry() *tools.ToolRegistry { return p.app.toolRegistry() }
 
-// BuiltinEntries returns the builtin tool entries (mcp provider merge input).
+// Registry exposes the tool registry (webui/mcp wiring).
+func (a *App) Registry() *tools.ToolRegistry { return a.toolRegistry() }
+
+// SetToolRegistry 用合并后的注册表替换共享实例（MCP 启动/热切换时调用）。
+func (a *App) SetToolRegistry(registry *tools.ToolRegistry) {
+	if registry == nil {
+		return
+	}
+	a.registryMu.Lock()
+	defer a.registryMu.Unlock()
+	a.toolReg = registry
+}
+
+// toolRegistry 返回共享工具注册表（惰性构建 builtin 条目；MCP 启动后由
+// SetToolRegistry 替换为含 MCP 条目的实例）。
+func (a *App) toolRegistry() *tools.ToolRegistry {
+	a.registryMu.RLock()
+	if a.toolReg != nil {
+		registry := a.toolReg
+		a.registryMu.RUnlock()
+		return registry
+	}
+	a.registryMu.RUnlock()
+
+	a.registryMu.Lock()
+	defer a.registryMu.Unlock()
+	if a.toolReg == nil {
+		a.toolReg = tools.NewToolRegistry(tools.BuiltinEntries(a.ToolRegistryFlags(), a.builtinToolDeps()))
+	}
+	return a.toolReg
+}
+
+// BuiltinEntries returns the builtin tool entries with handlers wired
+// (mcp provider merge input).
 func (a *App) BuiltinEntries() []tools.BuiltinToolEntry {
-	return tools.BuiltinEntries(a.ToolRegistryFlags())
+	return tools.BuiltinEntries(a.ToolRegistryFlags(), a.builtinToolDeps())
 }
 
 // ForSession returns a session-scoped view of the shared bridge.
@@ -138,15 +169,19 @@ func plannerMessages(request runtime.PlannerRequest) []contracts.ChatMessage {
 }
 
 // ExecuteToolCalls implements runtime.PlannerLLM.ExecuteToolCalls.
+// LogicalTurnID / Reasoning 由引擎在 PlannerToolCall 上回填（wait 进入等待态
+// 依赖非空 logical_turn_id；reasoning 作为 reply_reference 的兜底文案）。
 func (p *plannerBridge) ExecuteToolCalls(ctx context.Context, calls []runtime.PlannerToolCall, planContent string) ([]runtime.PlannerToolResult, error) {
 	results := make([]runtime.PlannerToolResult, 0, len(calls))
 	for _, call := range calls {
 		toolCtx := p.app.ToolCtx(p.currentSession)
-		result := p.registry.Invoke(ctx, toolCtx, tools.ToolInvocation{
-			ToolName:  call.FuncName,
-			Arguments: call.Args,
-			CallID:    call.CallID,
-			SessionID: p.currentSession,
+		result := p.registry().Invoke(ctx, toolCtx, tools.ToolInvocation{
+			ToolName:      call.FuncName,
+			Arguments:     call.Args,
+			CallID:        call.CallID,
+			SessionID:     p.currentSession,
+			Reasoning:     call.Reasoning,
+			LogicalTurnID: call.LogicalTurnID,
 		})
 		out := runtime.PlannerToolResult{
 			CallID:   call.CallID,
@@ -167,7 +202,7 @@ func (p *plannerBridge) ExecuteToolCalls(ctx context.Context, calls []runtime.Pl
 
 // BuildActionToolDefinitions implements runtime.PlannerLLM.BuildActionToolDefinitions.
 func (p *plannerBridge) BuildActionToolDefinitions(ctx context.Context) ([]runtime.PlannerToolDefinition, string, error) {
-	specs := p.registry.VisibleToolSpecs()
+	specs := p.registry().VisibleToolSpecs()
 	defs := make([]runtime.PlannerToolDefinition, 0, len(specs))
 	for _, spec := range specs {
 		defs = append(defs, runtime.PlannerToolDefinition{
@@ -176,7 +211,7 @@ func (p *plannerBridge) BuildActionToolDefinitions(ctx context.Context) ([]runti
 			Parameters:  spec.ParametersSchema,
 		})
 	}
-	return defs, p.registry.BuildDeferredToolsReminder(), nil
+	return defs, p.registry().BuildDeferredToolsReminder(), nil
 }
 
 // BuildInjectedUserMessages implements runtime.PlannerLLM.BuildInjectedUserMessages.

@@ -38,6 +38,11 @@ func NewBus() *Bus {
 
 // Emit 发布一个事件。零订阅时为无锁快速路径；有订阅者时对每个订阅者做
 // 非阻塞发送，channel 满即丢弃（防慢消费者拖垮聊天主链路）。
+//
+// 并发安全（回归 P0）：发送必须在 RLock 持锁期间完成。cancel 持写锁先
+// delete 再 close，Emit 持读锁时二者互斥——凡是在锁内遍历到的订阅者都
+// 尚未被 close，从而杜绝「send on closed channel」panic。若在锁外发送，
+// Emit 复制 channel 与 cancel 关闭 channel 之间没有同步点，必然竞态。
 func (b *Bus) Emit(ev contracts.Event) {
 	if b == nil {
 		return
@@ -50,19 +55,18 @@ func (b *Bus) Emit(ev contracts.Event) {
 		b.mu.RUnlock()
 		return
 	}
-	chans := make([]chan contracts.Event, 0, len(b.subs))
+	dropped := 0
 	for _, sub := range b.subs {
-		chans = append(chans, sub.ch)
-	}
-	b.mu.RUnlock()
-
-	for _, ch := range chans {
 		select {
-		case ch <- ev:
+		case sub.ch <- ev:
 		default:
 			// 慢消费者：丢弃本次事件，保证 Emit 永不阻塞。
-			b.dropped.Add(1)
+			dropped++
 		}
+	}
+	b.mu.RUnlock()
+	if dropped > 0 {
+		b.dropped.Add(int64(dropped))
 	}
 }
 
@@ -81,6 +85,9 @@ func (b *Bus) Subscribe(buffer int) (<-chan contracts.Event, func()) {
 	b.subCount.Store(int64(len(b.subs)))
 
 	cancel := func() {
+		// 写锁与 Emit 的读锁互斥，且必须先 delete 再 close：保证 Emit 在
+		// 读锁内遍历到的订阅者 channel 都还未关闭（发送不会落在已关闭
+		// channel 上），订阅方仍可用 range + close 语义正常退出。
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if _, ok := b.subs[id]; !ok {

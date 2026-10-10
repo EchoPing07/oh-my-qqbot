@@ -233,6 +233,14 @@ func NewToolRegistry(entries []BuiltinToolEntry) *ToolRegistry {
 			registry.deferredByName[entry.Name] = entry.GetSpec()
 		}
 	}
+	// tool_search 的 handler 需要引用注册表自身（搜索/发现 deferred tools），
+	// 目录闭包在注册表构建完成前拿不到实例；这里在构建时回填，保证
+	// Invoke("tool_search") 永远可用（此前 handler 为 nil，调用即 nil 函数 panic）。
+	if handler, ok := registry.handlers["tool_search"]; ok && handler == nil {
+		registry.handlers["tool_search"] = func(_ context.Context, _ *RuntimeContext, invocation ToolInvocation) ToolResult {
+			return HandleToolSearchTool(registry, invocation)
+		}
+	}
 	return registry
 }
 
@@ -406,6 +414,11 @@ func (r *ToolRegistry) Invoke(ctx context.Context, toolCtx *RuntimeContext, invo
 	handler, ok := r.handlers[invocation.ToolName]
 	if !ok {
 		return BuildFailureResult(invocation.ToolName, fmt.Sprintf("未找到工具 %s。", invocation.ToolName), nil, nil)
+	}
+	if handler == nil {
+		// 防御：目录项未携带 handler 时显式失败回执，而不是调用 nil 函数
+		// 崩溃进程（P0 崩溃链根因 1 的最后一道防线）。
+		return BuildFailureResult(invocation.ToolName, fmt.Sprintf("工具 %s 没有可用的处理器。", invocation.ToolName), nil, nil)
 	}
 	return handler(ctx, toolCtx, invocation)
 }

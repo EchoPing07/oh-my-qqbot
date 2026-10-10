@@ -145,7 +145,7 @@ func TestWaitToolLimitReached(t *testing.T) {
 // -- registry schema 形态 --
 
 func TestRegistrySchemaShape(t *testing.T) {
-	entries := BuiltinEntries(FeatureFlags{EnableMemoryQueryTool: true, BotNickname: "麦麦"})
+	entries := BuiltinEntries(FeatureFlags{EnableMemoryQueryTool: true, BotNickname: "麦麦"}, nil)
 	registry := NewToolRegistry(entries)
 
 	specs := registry.VisibleToolSpecs()
@@ -199,7 +199,7 @@ func TestRegistrySchemaShape(t *testing.T) {
 }
 
 func TestToolSearchTool(t *testing.T) {
-	entries := BuiltinEntries(FeatureFlags{})
+	entries := BuiltinEntries(FeatureFlags{}, nil)
 	registry := NewToolRegistry(entries)
 
 	result := HandleToolSearchTool(registry, ToolInvocation{
@@ -244,7 +244,7 @@ func TestToolSearchTool(t *testing.T) {
 }
 
 func TestToolSearchScoring(t *testing.T) {
-	entries := BuiltinEntries(FeatureFlags{})
+	entries := BuiltinEntries(FeatureFlags{}, nil)
 	registry := NewToolRegistry(entries)
 	// 精确名 > 前缀 > 包含
 	matched := registry.SearchDeferredToolSpecs("view_forward_message", 5)
@@ -704,3 +704,88 @@ func buildGuidedReply(targetID string, text string) *chatcontext.SessionBackedMe
 
 // timeNow is a test clock helper.
 func timeNow() time.Time { return time.Unix(1700000000, 0) }
+
+// sessionRuntimeForTest 组合 ReplyRuntime 与 wait 面（模拟 runtime.Runtime
+// 同时满足 SessionRuntime 接口并集）。
+type sessionRuntimeForTest struct {
+	*fakeReplyRuntime
+	wait fakeWaitRuntime
+}
+
+func (s *sessionRuntimeForTest) TryEnterWaitState(seconds *float64, toolCallID string, logicalTurnID string) (bool, int, int) {
+	return s.wait.TryEnterWaitState(seconds, toolCallID, logicalTurnID)
+}
+
+// 回归 P0（根因 1）：BuiltinEntries 的每个目录项都必须携带可用 handler。
+// 此前 8 个条目的 HandleTool 全为 nil，planner 一旦返回工具调用就会因
+// 调用 nil 函数而崩溃进程。
+func TestBuiltinEntriesHandlersWired(t *testing.T) {
+	registry := NewToolRegistry(BuiltinEntries(FeatureFlags{BotNickname: "麦麦"}, nil))
+	for _, name := range registry.Names() {
+		if registry.HandlerOf(name) == nil {
+			t.Fatalf("内置工具 %s 的 handler 未装配（nil handler 调用会 panic）", name)
+		}
+	}
+	// tool_search 的 handler 需要注册表自身，由 NewToolRegistry 回填。
+	if registry.HandlerOf("tool_search") == nil {
+		t.Fatal("tool_search handler 应由注册表回填")
+	}
+}
+
+// 防御 6：Invoke 对 nil handler 显式报错而不是 panic。
+func TestRegistryInvokeNilHandlerDefense(t *testing.T) {
+	registry := NewToolRegistry([]BuiltinToolEntry{{
+		Name:    "no_handler_tool",
+		GetSpec: GetWaitToolSpec,
+		// HandleTool 故意缺省。
+	}})
+	result := registry.Invoke(context.Background(), &RuntimeContext{SessionID: "s1"}, ToolInvocation{
+		ToolName:  "no_handler_tool",
+		CallID:    "call_1",
+		Arguments: map[string]any{},
+	})
+	if result.Success {
+		t.Fatalf("nil handler 应返回失败结果: %+v", result)
+	}
+	if !strings.Contains(result.ErrorMessage, "没有可用的处理器") {
+		t.Fatalf("错误信息应说明缺少处理器: %s", result.ErrorMessage)
+	}
+}
+
+// 依赖未装配时内置工具按失败回执而不是 panic。
+func TestBuiltinEntriesUnwiredDepsFailGracefully(t *testing.T) {
+	registry := NewToolRegistry(BuiltinEntries(FeatureFlags{BotNickname: "麦麦"}, nil))
+	for _, name := range []string{"wait", "reply", "view_forward_message", "query_memory", "fetch_history"} {
+		result := registry.Invoke(context.Background(), &RuntimeContext{SessionID: "s1"}, ToolInvocation{
+			ToolName: name,
+			CallID:   "call_1",
+			Arguments: map[string]any{
+				"msg_id": "m1", "seconds": float64(1), "query": "q", "num": float64(1),
+			},
+		})
+		if result.Success {
+			t.Fatalf("%s 在依赖未装配时应失败回执: %+v", name, result)
+		}
+	}
+}
+
+// 装配后的 wait 工具经 registry 正常执行，且 LogicalTurnID/CallID 透传到
+// 等待状态机（修复 5 的工具层断言）。
+func TestRegistryWiredWaitToolExecutes(t *testing.T) {
+	rt := &sessionRuntimeForTest{fakeReplyRuntime: &fakeReplyRuntime{sessionID: "s1"}}
+	registry := NewToolRegistry(BuiltinEntries(FeatureFlags{BotNickname: "麦麦"}, &BuiltinToolDeps{
+		RuntimeFor: func(string) SessionRuntime { return rt },
+	}))
+	result := registry.Invoke(context.Background(), &RuntimeContext{SessionID: "s1"}, ToolInvocation{
+		ToolName:      "wait",
+		CallID:        "call_1",
+		LogicalTurnID: "turn_1",
+		Arguments:     map[string]any{"seconds": float64(5)},
+	})
+	if !result.Success {
+		t.Fatalf("wait 应经 registry 正常执行: %+v", result)
+	}
+	if rt.wait.lastTurnID != "turn_1" || rt.wait.lastCallID != "call_1" {
+		t.Fatalf("LogicalTurnID/CallID 应透传: turn=%q call=%q", rt.wait.lastTurnID, rt.wait.lastCallID)
+	}
+}

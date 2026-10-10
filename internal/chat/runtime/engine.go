@@ -443,6 +443,15 @@ func (e *Engine) handlePlannerResponseActions(
 		return true, nil
 	}
 
+	// 回填工具调用的逻辑轮次 ID 与推理文本（对齐 Python invocation 的
+	// logical_turn_id/reasoning 传递）：wait 进入等待态依赖非空
+	// logical_turn_id，缺失会被 _try_enter_wait_state 拒绝。
+	for index := range response.ToolCalls {
+		response.ToolCalls[index].LogicalTurnID = e.activeLogicalTurnID
+		if strings.TrimSpace(response.ToolCalls[index].Reasoning) == "" {
+			response.ToolCalls[index].Reasoning = response.Reasoning
+		}
+	}
 	results, err := planner.ExecuteToolCalls(context.Background(), response.ToolCalls, plannerContent)
 	if err != nil {
 		if IsInterruptedError(err) {
