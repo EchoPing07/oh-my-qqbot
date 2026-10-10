@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -111,9 +112,10 @@ func TestDefaultBotConfigDefaults(t *testing.T) {
 		{"mcp.client.client_name", cfg.MCP.Client.ClientName, "MaiBot"},
 		{"mcp.client.sampling.task_name", cfg.MCP.Client.Sampling.TaskName, "planner"},
 		{"webui.enabled", cfg.WebUI.Enabled, true},
+		{"webui.host", fmt.Sprint(cfg.WebUI.Host), fmt.Sprint([]string{"0.0.0.0"})},
 		{"webui.port", cfg.WebUI.Port, 8001},
 		{"webui.mode", cfg.WebUI.Mode, "production"},
-		{"webui.webui_style", cfg.WebUI.WebuiStyle, 1},
+		{"webui.webui_style", cfg.WebUI.WebuiStyle, 0},
 		{"log.date_style", cfg.Log.DateStyle, "m-d H:i:s"},
 		{"log.log_level", cfg.Log.LogLevel, "INFO"},
 		{"log.file_log_level", cfg.Log.FileLogLevel, "DEBUG"},

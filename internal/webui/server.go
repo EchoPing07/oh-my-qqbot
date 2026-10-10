@@ -1,6 +1,6 @@
 // Package webui 实现 WebUI 后端（REWRITE_PLAN §6.16，对齐
 // 参考/MaiBot/src/webui/ 的 FastAPI 版）：
-//   - server.go   HTTP 服务器 + 静态托管（SPA fallback）+ 默认 127.0.0.1
+//   - server.go   HTTP 服务器 + 静态托管（SPA fallback）+ 默认 0.0.0.0（全网卡）
 //   - auth.go     TokenManager（access token 持久化 + WS 临时令牌）
 //   - wshub.go    WS 统一通道（域/主题订阅 + 广播）
 //   - monitor.go  EventBus → WS maisaka_monitor 域的桥 + Planner 快照缓存
@@ -46,7 +46,7 @@ type Options struct {
 	DataDir string
 	// DistDir 前端静态目录（web/dashboard/dist）。为空或不存在时仅提供 API。
 	DistDir string
-	// Hosts 监听地址；为空时默认 ["127.0.0.1"]（安全默认，对齐 §9.9）。
+	// Hosts 监听地址；为空时默认 ["0.0.0.0"]（监听所有网卡；公网部署需改强密码 + 反代 HTTPS）。
 	Hosts []string
 	// Port 监听端口；为 0 时取 8001（对齐 WebUIConfig.port 默认值）。
 	Port int
@@ -107,7 +107,7 @@ func NewServer(opts Options) (*Server, error) {
 		opts.Port = 8001
 	}
 	if len(opts.Hosts) == 0 {
-		opts.Hosts = []string{"127.0.0.1"}
+		opts.Hosts = []string{"0.0.0.0"}
 	}
 
 	// 鉴权：启动生成/读取 data/webui.json 的 access token。

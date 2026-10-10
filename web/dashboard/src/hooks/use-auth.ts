@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
-import { type AuthStatus, getAuthStatus } from '@/lib/auth'
+import { type AuthStatus, getAuthStatus, getSetupStatus } from '@/lib/auth'
 import { authApi } from '@/lib/http'
 
 const AUTH_STATUS_CACHE_MS = 30_000
@@ -33,8 +33,12 @@ async function resolveEntryRedirect(): Promise<'auth' | 'setup' | null> {
   if (!status.authenticated) {
     return 'auth'
   }
+  // 仅在首次配置未完成时进向导；默认密码（configured 来源）可直接登录使用。
   if (status.requires_custom_token) {
-    return 'setup'
+    const setup = await getSetupStatus()
+    if (setup?.is_first_setup) {
+      return 'setup'
+    }
   }
   return null
 }
@@ -43,13 +47,13 @@ export function useAuthGuard() {
   const navigate = useNavigate()
   const [checking, setChecking] = useState(() => {
     const cached = readCachedAuthStatus()
-    return cached?.authenticated !== true || cached.requires_custom_token === true
+    return cached?.authenticated !== true
   })
 
   useEffect(() => {
     let cancelled = false
     const cached = readCachedAuthStatus()
-    if (cached?.authenticated === true && cached.requires_custom_token !== true) {
+    if (cached?.authenticated === true) {
       setChecking(false)
       return () => {
         cancelled = true

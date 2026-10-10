@@ -14,7 +14,7 @@ import (
 func Register(mux *http.ServeMux, d *Deps) {
 	// ---- 主路由（routes.py，前缀 /api/webui）----
 	mux.HandleFunc("GET /api/webui/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "healthy", "service": "MaiBot WebUI"})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "healthy", "service": "oh-my-qqbot WebUI"})
 	})
 	mux.HandleFunc("POST /api/webui/auth/verify", handleAuthVerify(d))
 	mux.HandleFunc("POST /api/webui/auth/logout", handleAuthLogout)

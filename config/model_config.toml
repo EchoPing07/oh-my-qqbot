@@ -1,0 +1,154 @@
+[inner]
+version = '1.17.15'
+[[api_providers]]
+api_key = 'your-api-key'
+auth_header_name = ''
+auth_header_prefix = ''
+auth_query_name = ''
+auth_type = 'bearer'
+base_url = 'https://api.deepseek.com'
+client_type = ''
+max_retry = 3
+name = 'DeepSeek'
+reasoning_parse_mode = ''
+retry_interval = 4
+timeout = 120
+tool_argument_parse_mode = ''
+
+[model_task_config]
+[model_task_config.embedding]
+hard_timeout = 60.0
+max_tokens = 4096
+model_list = []
+selection_strategy = 'balance'
+temperature = 0.7
+
+[model_task_config.emoji]
+hard_timeout = 120.0
+max_tokens = 8192
+model_list = []
+selection_strategy = 'balance'
+temperature = 0.7
+
+[model_task_config.fast_model]
+hard_timeout = 120.0
+max_tokens = 8192
+model_list = []
+selection_strategy = 'balance'
+temperature = 0.3
+
+[model_task_config.image_embedding]
+hard_timeout = 60.0
+max_tokens = 4096
+model_list = []
+selection_strategy = 'balance'
+temperature = 0.7
+
+[model_task_config.learner]
+hard_timeout = 120.0
+max_tokens = 8192
+model_list = []
+selection_strategy = 'balance'
+temperature = 0.7
+
+[model_task_config.memory]
+hard_timeout = 240.0
+max_tokens = 8192
+model_list = []
+selection_strategy = 'random'
+temperature = 0.3
+
+[model_task_config.mid_memory]
+hard_timeout = 180.0
+max_tokens = 8192
+model_list = []
+selection_strategy = 'random'
+temperature = 0.7
+
+[model_task_config.planner]
+hard_timeout = 180.0
+max_tokens = 16384
+model_list = ['deepseek-v4-flash']
+selection_strategy = 'random'
+temperature = 0.7
+
+[model_task_config.replyer]
+hard_timeout = 240.0
+max_tokens = 8192
+model_list = ['deepseek-v4-pro-think', 'deepseek-v4-pro-nonthink']
+selection_strategy = 'random'
+temperature = 1.0
+
+[model_task_config.utils]
+hard_timeout = 120.0
+max_tokens = 8192
+model_list = ['deepseek-v4-flash']
+selection_strategy = 'random'
+temperature = 0.5
+
+[model_task_config.vlm]
+hard_timeout = 240.0
+max_tokens = 8192
+model_list = []
+selection_strategy = 'balance'
+temperature = 0.7
+
+[model_task_config.voice]
+hard_timeout = 120.0
+max_tokens = 8192
+model_list = []
+selection_strategy = 'balance'
+temperature = 0.7
+
+[[models]]
+api_provider = 'DeepSeek'
+cache = false
+cache_price_in = 0.0
+force_stream_mode = false
+model_identifier = 'deepseek-v4-pro'
+name = 'deepseek-v4-pro-think'
+price_in = 12.0
+price_out = 24.0
+price_periods = []
+send_temperature = true
+visual = false
+
+[models.extra_params]
+reasoning_effort = 'high'
+
+[models.extra_params.thinking]
+type = 'enabled'
+
+[[models]]
+api_provider = 'DeepSeek'
+cache = false
+cache_price_in = 0.0
+force_stream_mode = false
+model_identifier = 'deepseek-v4-pro'
+name = 'deepseek-v4-pro-nonthink'
+price_in = 12.0
+price_out = 24.0
+price_periods = []
+send_temperature = true
+visual = false
+
+[models.extra_params]
+[models.extra_params.thinking]
+type = 'disabled'
+
+[[models]]
+api_provider = 'DeepSeek'
+cache = false
+cache_price_in = 0.0
+force_stream_mode = false
+model_identifier = 'deepseek-v4-flash'
+name = 'deepseek-v4-flash'
+price_in = 1.0
+price_out = 2.0
+price_periods = []
+send_temperature = true
+visual = false
+
+[models.extra_params]
+[models.extra_params.thinking]
+type = 'disabled'

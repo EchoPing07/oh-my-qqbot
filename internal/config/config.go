@@ -1069,10 +1069,11 @@ type WebUIConfig struct {
 func defaultWebUIConfig() WebUIConfig {
 	return WebUIConfig{
 		Enabled:    true,
-		Host:       []string{"127.0.0.1", "::1"},
+		// 默认监听所有网卡（局域网可直接访问 WebUI）；公网部署必须改强密码并前置反代。
+		Host:       []string{"0.0.0.0"},
 		Port:       8001,
 		Mode:       "production",
-		WebuiStyle: 1,
+		WebuiStyle: 0,
 	}
 }
 

@@ -7,18 +7,10 @@ import {
   FileText,
   HelpCircle,
   Key,
-  Lock,
   Terminal,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 
 import { checkAuthStatus, getSetupStatus } from '@/lib/auth'
@@ -130,8 +122,9 @@ export function AuthPage() {
           // 再次检查认证状态
           await checkAuthStatus()
 
-          // 直接使用验证响应中的 is_first_setup 字段，避免额外请求
-          if (data.requires_custom_token || data.is_first_setup) {
+          // 直接使用验证响应中的 is_first_setup 字段，避免额外请求。
+          // 默认密码登录即可用，只有首次配置未完成才进向导。
+          if (data.is_first_setup) {
             navigate({ to: '/setup' })
           } else {
             navigate({ to: resolvePostAuthTarget() })
@@ -169,7 +162,7 @@ export function AuthPage() {
           const setupStatus = await getSetupStatus()
           navigate({
             to:
-              setupStatus?.requires_custom_token || setupStatus?.is_first_setup
+              setupStatus?.is_first_setup
                 ? '/setup'
                 : resolvePostAuthTarget(),
           })
@@ -318,74 +311,55 @@ export function AuthPage() {
               )}
             </Button>
 
-            {/* 帮助文本 */}
-            <Dialog>
-              <DialogTrigger asChild>
-                <button className="text-primary hover:text-primary/80 flex w-full items-center justify-start gap-1 text-left text-[11px] transition-colors underline-offset-4 hover:underline">
-                  <HelpCircle className="h-3 w-3" strokeWidth={2} fill="none" />
-                  {t('auth.helpLink')}
-                </button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Lock className="text-primary h-5 w-5" strokeWidth={2} fill="none" />
-                    {t('auth.helpTitle')}
-                  </DialogTitle>
-                </DialogHeader>
-
-                <div className="space-y-4">
-                  {/* 方式一：查看控制台 */}
-                  <div className="bg-muted/50 space-y-2 border p-4">
-                    <div className="flex items-start gap-3">
-                      <Terminal
-                        className="text-primary mt-0.5 h-5 w-5 shrink-0"
-                        strokeWidth={2}
-                        fill="none"
-                      />
-                      <div className="flex-1 space-y-2">
-                        <h4 className="text-sm font-semibold">{t('auth.method1Title')}</h4>
-                        <p className="text-muted-foreground text-sm">{t('auth.method1Desc')}</p>
-                        <div className="bg-background font-mono text-xs p-2">
-                          <p className="text-muted-foreground">{t('auth.method1Example1')}</p>
-                          <p className="text-muted-foreground">{t('auth.method1Example2')}</p>
-                        </div>
+            {/* 帮助文本 — 纯 CSS 折叠（禁用 Radix Dialog：其关闭路径可能残留
+                body pointer-events:none，导致登录按钮整体无响应） */}
+            <details data-auth-help="true" className="group">
+              <summary className="text-primary hover:text-primary/80 flex w-full cursor-pointer list-none items-center justify-start gap-1 text-left text-[11px] transition-colors underline-offset-4 hover:underline [&::-webkit-details-marker]:hidden">
+                <HelpCircle className="h-3 w-3" strokeWidth={2} fill="none" />
+                {t('auth.helpLink')}
+              </summary>
+              <div className="border-border mt-3 space-y-3 border-t pt-3">
+                {/* 方式一：查看控制台 */}
+                <div className="bg-muted/50 space-y-2 border p-3">
+                  <div className="flex items-start gap-2.5">
+                    <Terminal className="text-primary mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} fill="none" />
+                    <div className="flex-1 space-y-1.5">
+                      <h4 className="text-sm font-semibold">{t('auth.method1Title')}</h4>
+                      <p className="text-muted-foreground text-xs">{t('auth.method1Desc')}</p>
+                      <div className="bg-background font-mono text-[11px] p-2">
+                        <code className="text-primary">admin123</code>
                       </div>
                     </div>
-                  </div>
-
-                  {/* 方式二：查看配置文件 */}
-                  <div className="bg-muted/50 space-y-2 border p-4">
-                    <div className="flex items-start gap-3">
-                      <FileText
-                        className="text-primary mt-0.5 h-5 w-5 shrink-0"
-                        strokeWidth={2}
-                        fill="none"
-                      />
-                      <div className="flex-1 space-y-2">
-                        <h4 className="text-sm font-semibold">{t('auth.method2Title')}</h4>
-                        <p className="text-muted-foreground text-sm">{t('auth.method2Desc')}</p>
-                        <div className="bg-background font-mono text-xs break-all p-2">
-                          <code className="text-primary">data/webui.json</code>
-                        </div>
-                        <p className="text-muted-foreground text-xs">
-                          {t('auth.method2FileHint')}{' '}
-                          <code className="bg-background px-1 py-0.5">access_token</code>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 安全提示 */}
-                  <div className="text-muted-foreground text-xs">
-                    <ul className="list-inside list-disc space-y-1">
-                      <li>{t('auth.securityTip1')}</li>
-                      <li>{t('auth.securityTip2')}</li>
-                    </ul>
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
+
+                {/* 方式二：查看配置文件 */}
+                <div className="bg-muted/50 space-y-2 border p-3">
+                  <div className="flex items-start gap-2.5">
+                    <FileText className="text-primary mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} fill="none" />
+                    <div className="flex-1 space-y-1.5">
+                      <h4 className="text-sm font-semibold">{t('auth.method2Title')}</h4>
+                      <p className="text-muted-foreground text-xs">{t('auth.method2Desc')}</p>
+                      <div className="bg-background font-mono text-[11px] break-all p-2">
+                        <code className="text-primary">data/webui.json</code>
+                      </div>
+                      <p className="text-muted-foreground text-[11px]">
+                        {t('auth.method2FileHint')}{' '}
+                        <code className="bg-background px-1 py-0.5">access_token</code>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 安全提示 */}
+                <div className="text-muted-foreground text-[11px]">
+                  <ul className="list-inside list-disc space-y-1">
+                    <li>{t('auth.securityTip1')}</li>
+                    <li>{t('auth.securityTip2')}</li>
+                  </ul>
+                </div>
+              </div>
+            </details>
           </form>
         </div>
       </div>

@@ -26,6 +26,10 @@ const (
 	TokenSourceConfigured = "configured"
 )
 
+// DefaultWebUIPassword 是首次启动的默认登录密码（固定值，写进 README；
+// 本机 127.0.0.1 部署用，公网部署必须在向导中修改）。
+const DefaultWebUIPassword = "admin123"
+
 // wsTokenExpireSeconds 对齐 _WS_TOKEN_EXPIRE_SECONDS。
 const wsTokenExpireSeconds = 60
 
@@ -71,8 +75,9 @@ func NewTokenManager(dataDir string) (*TokenManager, error) {
 	return m, nil
 }
 
-// ensureConfig 对齐 _ensure_config：文件缺失/损坏/缺 token 时重建；
-// temporary 来源每次启动重新生成。
+// ensureConfig 对齐 _ensure_config：文件缺失/损坏/缺 token 时重建。
+// 首次启动写入固定默认密码（DefaultWebUIPassword，来源 configured），
+// 不再每次启动轮换随机 token——登录凭据跨重启稳定，消除抄错/过期问题。
 func (m *TokenManager) ensureConfig() error {
 	if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
 		return fmt.Errorf("webui: 创建数据目录失败: %w", err)
@@ -81,19 +86,19 @@ func (m *TokenManager) ensureConfig() error {
 	switch {
 	case os.IsNotExist(err):
 		slog.Info("WebUI 配置文件不存在，正在创建", "path", m.path)
-		return m.createToken(TokenSourceTemporary, tokenConfig{})
+		return m.createDefaultPassword()
 	case err != nil:
 		slog.Error("读取 WebUI 配置文件失败，正在重新创建", "err", err)
-		return m.createToken(TokenSourceTemporary, tokenConfig{})
+		return m.createDefaultPassword()
 	}
 	var cfg tokenConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		slog.Error("解析 WebUI 配置失败，正在重新创建", "err", err)
-		return m.createToken(TokenSourceTemporary, tokenConfig{})
+		return m.createDefaultPassword()
 	}
 	if cfg.AccessToken == "" {
-		slog.Warn("WebUI 配置文件中缺少 access_token，正在重新生成")
-		return m.createToken(TokenSourceTemporary, cfg)
+		slog.Warn("WebUI 配置文件中缺少 access_token，正在重置为默认密码")
+		return m.createDefaultPassword()
 	}
 	source := resolveTokenSource(cfg)
 	if cfg.TokenSource != source {
@@ -102,25 +107,46 @@ func (m *TokenManager) ensureConfig() error {
 			return err
 		}
 	}
-	if source == TokenSourceTemporary {
-		slog.Info("WebUI 尚未配置固定 Token，正在重新生成本次启动临时 Token")
-		return m.createToken(TokenSourceTemporary, cfg)
-	}
 	m.config = cfg
-	slog.Info(fmt.Sprintf("WebUI Token 已加载: %s...", cfg.AccessToken[:8]))
+	if source == TokenSourceConfigured {
+		slog.Info(fmt.Sprintf("WebUI 登录密码已加载（用户自定义）: %s...", cfg.AccessToken[:min(4, len(cfg.AccessToken))]))
+	} else {
+		slog.Info(fmt.Sprintf("WebUI 登录密码已加载: %s...", cfg.AccessToken[:min(4, len(cfg.AccessToken))]))
+	}
 	return nil
 }
 
-// resolveTokenSource 对齐 _resolve_token_source。
+// createDefaultPassword 写入固定默认密码（configured 来源，跨重启稳定）。
+func (m *TokenManager) createDefaultPassword() error {
+	cfg := tokenConfig{
+		AccessToken:         DefaultWebUIPassword,
+		CreatedAt:           time.Now().Format(time.RFC3339),
+		UpdatedAt:           time.Now().Format(time.RFC3339),
+		TokenSource:         TokenSourceConfigured,
+	}
+	if err := m.save(cfg); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.config = cfg
+	m.mu.Unlock()
+	slog.Info(fmt.Sprintf("WebUI 已重置为默认密码: %s（登录后请在 设置→安全 中修改）", DefaultWebUIPassword))
+	return nil
+}
+
+// resolveTokenSource 判定令牌来源。登录凭据已改为默认密码/用户自定义两种，
+// 均为 configured（跨重启稳定）；仅兼容读取旧版数据文件中的 temporary 遗留值。
 func resolveTokenSource(cfg tokenConfig) string {
 	switch cfg.TokenSource {
-	case TokenSourceTemporary, TokenSourceConfigured:
-		return cfg.TokenSource
-	}
-	if cfg.AccessToken == "" {
+	case TokenSourceConfigured:
+		return TokenSourceConfigured
+	case TokenSourceTemporary:
 		return TokenSourceTemporary
 	}
-	// 64 位 hex 是系统生成的临时 token；其余视为用户配置。
+	if cfg.AccessToken == "" {
+		return TokenSourceConfigured
+	}
+	// 旧版 64 位 hex 随机 token 视为临时凭据，重启时由 ensureConfig 重置为默认密码。
 	if isHex64(cfg.AccessToken) {
 		return TokenSourceTemporary
 	}
@@ -174,11 +200,11 @@ func (m *TokenManager) save(cfg tokenConfig) error {
 	return os.Rename(tmp, m.path)
 }
 
-// logStartupToken 对齐 show_access_token：temporary 来源启动打印完整 token 一次。
+// logStartupToken 登录密码已固定（默认密码或用户自定义），不再启动打印完整凭据；
+// 仅在默认密码未修改时提醒一次。
 func (m *TokenManager) logStartupToken() {
-	if m.TokenSource() == TokenSourceTemporary {
-		slog.Info(fmt.Sprintf("WebUI Access Token: %s", m.Token()))
-		slog.Info("请使用该 Token 登录 WebUI（配置固定 Token 后将不再打印）")
+	if m.Token() == DefaultWebUIPassword {
+		slog.Info(fmt.Sprintf("WebUI 正在使用默认密码 %s，登录后请在 设置→安全 中修改", DefaultWebUIPassword))
 	}
 }
 

@@ -24,11 +24,12 @@ func TestTokenManagerGeneratesAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTokenManager: %v", err)
 	}
+	// 首次启动写入固定默认密码（configured 来源），跨重启稳定。
 	token := tm.Token()
-	if len(token) != 64 {
-		t.Fatalf("token 长度应为 64 hex, got %d: %q", len(token), token)
+	if token != DefaultWebUIPassword {
+		t.Fatalf("默认密码应为 %q, got %q", DefaultWebUIPassword, token)
 	}
-	// 文件存在且包含 token。
+	// 文件存在且包含密码。
 	data, err := os.ReadFile(filepath.Join(dir, "webui.json"))
 	if err != nil {
 		t.Fatalf("token 文件未创建: %v", err)
@@ -40,13 +41,13 @@ func TestTokenManagerGeneratesAndPersists(t *testing.T) {
 	if cfg.AccessToken != token {
 		t.Fatalf("文件中的 token 与内存不一致")
 	}
-	if cfg.TokenSource != TokenSourceTemporary {
-		t.Fatalf("默认来源应为 temporary, got %q", cfg.TokenSource)
+	if cfg.TokenSource != TokenSourceConfigured {
+		t.Fatalf("默认密码来源应为 configured, got %q", cfg.TokenSource)
 	}
 }
 
-// temporary 来源每次启动重新生成（对齐 _ensure_config 语义）。
-func TestTokenManagerTemporaryRegeneratedEachStart(t *testing.T) {
+// 默认密码跨重启保持稳定（不再按次启动轮换）。
+func TestTokenManagerStableAcrossRestarts(t *testing.T) {
 	dir := t.TempDir()
 	first, err := NewTokenManager(dir)
 	if err != nil {
@@ -58,11 +59,26 @@ func TestTokenManagerTemporaryRegeneratedEachStart(t *testing.T) {
 		t.Fatalf("second: %v", err)
 	}
 	token2 := second.Token()
-	if token1 == token2 {
-		t.Fatalf("temporary token 应每次启动重新生成")
+	if token1 != token2 {
+		t.Fatalf("默认密码应跨重启稳定, got %q vs %q", token1, token2)
 	}
-	if !second.VerifyToken(token2) || second.VerifyToken(token1) {
-		t.Fatalf("旧 token 应失效")
+	if !second.VerifyToken(token2) {
+		t.Fatalf("默认密码应可登录")
+	}
+}
+
+// 损坏的 token 文件在重启时重置为默认密码。
+func TestTokenManagerCorruptedFileResetsToDefault(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "webui.json"), []byte("{invalid"), 0o600); err != nil {
+		t.Fatalf("写坏文件: %v", err)
+	}
+	tm, err := NewTokenManager(dir)
+	if err != nil {
+		t.Fatalf("NewTokenManager: %v", err)
+	}
+	if tm.Token() != DefaultWebUIPassword {
+		t.Fatalf("损坏文件应重置为默认密码, got %q", tm.Token())
 	}
 }
 

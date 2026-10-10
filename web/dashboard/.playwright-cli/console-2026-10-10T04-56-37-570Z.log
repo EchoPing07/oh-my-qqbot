@@ -1,0 +1,3 @@
+[      89ms] [INFO] 🌐 i18next is made possible by our own product, Locize — consider powering your project with managed localization (AI, CDN, integrations): https://locize.com 💙 @ http://127.0.0.1:8001/assets/index-BQSK7B4Z.js:10
+[     162ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8001/fonts/JetBrainsMono-Medium.ttf:0
+[  197762ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:8001/setup:0

@@ -172,7 +172,7 @@ function SetupPageContent() {
           loadModelSetupConfig(),
         ])
 
-        setRequiresCustomToken(setupStatus.requires_custom_token)
+        setRequiresCustomToken(setupStatus.token_source === 'temporary')
         setBotBasic(bot)
         setPersonality(personality)
         setApiProviderSetup(apiProvider)
